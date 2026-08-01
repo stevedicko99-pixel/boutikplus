@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { useAuth } from '@/context/AuthContext';
 import { getShopByOwner } from '@/lib/dataService';
 import {
@@ -143,7 +144,7 @@ export function ShareLinkManagementScreen({
     });
     setSaving(false);
     if (error) {
-      Alert.alert('Erreur', error);
+      Alert.alert('Erreur', friendlyMessage(error));
       return;
     }
     setShowForm(false);

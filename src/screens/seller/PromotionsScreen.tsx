@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { useAuth } from '@/context/AuthContext';
 import { getShopByOwner, getProductsByShop } from '@/lib/dataService';
 import {
@@ -174,7 +175,7 @@ export function PromotionsScreen({ navigation }: PromotionsScreenProps) {
     });
     setSaving(false);
     if (error) {
-      Alert.alert('Erreur', error);
+      Alert.alert('Erreur', friendlyMessage(error));
       return;
     }
     Alert.alert(

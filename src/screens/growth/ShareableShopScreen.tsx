@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -55,7 +56,7 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
         shopName,
       });
       if (error) {
-        Alert.alert('Erreur', error);
+        Alert.alert('Erreur', friendlyMessage(error));
         setLoading(false);
         return;
       }

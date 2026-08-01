@@ -118,22 +118,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isSupabaseConfigured) {
       return { error: 'Supabase non configuré. Voir le fichier .env' };
     }
-    const { data, error } = await supabase.auth.signUp({
+    // Les champs du profil sont passés via options.data → stockés dans
+    // raw_user_meta_data. Le trigger `on_auth_user_created` (SECURITY DEFINER,
+    // contourne le RLS) crée ensuite la ligne profiles côté serveur.
+    // On NE fait PAS d'insertion client : avec la confirmation email activée,
+    // signUp() ne crée pas de session, et l'insertion serait bloquée par RLS.
+    const { error } = await supabase.auth.signUp({
       email: params.email,
       password: params.password,
+      options: {
+        data: {
+          full_name: params.fullName,
+          phone: params.phone,
+          city: params.city,
+          role: params.role,
+        },
+      },
     });
     if (error) return { error: error.message };
-
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-      id: data.user.id,
-      full_name: params.fullName,
-      phone: params.phone,
-      city: params.city,
-      role: params.role,
-    });
-      if (profileError) return { error: profileError.message };
-    }
+    // Le profil est créé automatiquement par le trigger.
     return { error: null };
   };
 

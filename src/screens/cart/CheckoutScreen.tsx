@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { getAddresses, saveAddress, createOrder } from '@/lib/dataService';
 import { validateDiscountCode, redeemDiscountCode } from '@/lib/promotionService';
 import { formatFCFA } from '@/lib/format';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { CITY_LIST } from '@/constants/cities';
 import type { DeliveryAddress, DiscountValidationResult } from '@/types/models';
 
@@ -153,7 +154,7 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         note: note || null,
       });
       if (error) {
-        Alert.alert('Erreur', error);
+        Alert.alert('Erreur', friendlyMessage(error));
         setLoading(false);
         return;
       }

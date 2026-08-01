@@ -12,6 +12,7 @@ import { getBuyerOrders, getShop, uploadPaymentProof } from '@/lib/dataService';
 import { formatFCFA } from '@/lib/format';
 import { pickAndCompressImage, uploadImage, type StorageBucket } from '@/lib/storage';
 import { notifyProofUploaded } from '@/lib/notifications';
+import { friendlyMessage } from '@/lib/errorMessages';
 import type { Shop, Order } from '@/types/models';
 
 interface PaymentScreenProps {
@@ -72,7 +73,7 @@ export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
     const { error } = await uploadPaymentProof(order.id, order.total_amount, operator, proofUrl);
     setSubmitting(false);
     if (error) {
-      Alert.alert('Erreur', error);
+      Alert.alert('Paiement impossible', friendlyMessage(error));
       return;
     }
     // Déclencher notification au vendeur

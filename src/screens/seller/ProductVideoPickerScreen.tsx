@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import {
@@ -77,7 +78,7 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
       source: detectExternalSource(url),
     });
     setSaving(false);
-    if (error) { Alert.alert('Erreur', error); return; }
+    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
     Alert.alert('Vidéo ajoutée ✓', `Lien ${sourceMeta.label} enregistré.`, [
       { text: 'OK', onPress: () => navigation.navigate(returnTo, { productId }) },
     ]);
@@ -116,7 +117,7 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
       durationSec: asset.duration ? Math.round(asset.duration / 1000) : null,
     });
     setSaving(false);
-    if (error) { Alert.alert('Erreur', error); return; }
+    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
     Alert.alert('Vidéo ajoutée ✓', 'Votre vidéo a été téléversée.', [
       { text: 'OK', onPress: () => navigation.navigate(returnTo, { productId }) },
     ]);

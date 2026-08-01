@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { useAuth } from '@/context/AuthContext';
 import {
   createDriverProfile,
@@ -126,7 +127,7 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
     }
     setSubmitting(false);
     if (error) {
-      Alert.alert('Erreur', error);
+      Alert.alert('Erreur', friendlyMessage(error));
       return;
     }
     await refreshProfile();

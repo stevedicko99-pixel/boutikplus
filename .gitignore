@@ -31,6 +31,10 @@ yarn-error.*
 .env
 .env.local
 
+# APK binaire volumineux (~77 Mo) — hébergé via Vercel (déploiement CLI),
+# pas dans git (trop lourd pour GitHub). Régénéré depuis EAS Build si besoin.
+public/download/*.apk
+
 # Supabase local link (contient des infos de liaison projet)
 supabase/.temp/
 
@@ -51,3 +55,4 @@ coverage/
 
 # Bundler
 .bundle/
+.vercel

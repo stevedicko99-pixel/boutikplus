@@ -12,6 +12,7 @@ import { CATEGORIES } from '@/constants/categories';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ProductVideoCard } from '@/components/product/ProductVideoCard';
+import { friendlyMessage } from '@/lib/errorMessages';
 import type { Shop, ProductVideo } from '@/types/models';
 
 interface AddEditProductScreenProps {
@@ -64,7 +65,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
           style: 'destructive',
           onPress: async () => {
             const { error } = await deleteProductVideo(video.id);
-            if (error) { Alert.alert('Erreur', error); return; }
+            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
             setVideos((prev) => prev.filter((v) => v.id !== video.id));
           },
         },
@@ -126,12 +127,12 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
         name, description, price: priceNum, category_id: categoryId, stock: stockNum,
         status: stockNum > 0 ? 'available' : 'out_of_stock',
       });
-      if (error) { Alert.alert('Erreur', error); setLoading(false); return; }
+      if (error) { Alert.alert('Erreur', friendlyMessage(error)); setLoading(false); return; }
     } else {
       const { error } = await createProduct({
         shopId: shop.id, name, description, price: priceNum, categoryId, stock: stockNum, imageUrls,
       });
-      if (error) { Alert.alert('Erreur', error); setLoading(false); return; }
+      if (error) { Alert.alert('Erreur', friendlyMessage(error)); setLoading(false); return; }
     }
     setLoading(false);
     Alert.alert('Succès ✓', isEdit ? 'Produit modifié' : 'Produit ajouté', [{ text: 'OK', onPress: navigation.goBack }]);

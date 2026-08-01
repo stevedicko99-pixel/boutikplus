@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { useAuth } from '@/context/AuthContext';
 import {
   getDriverByUser,
@@ -80,7 +81,7 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
     setToggling(true);
     const { error } = await setDriverAvailability(driver.id, !driver.is_available);
     setToggling(false);
-    if (error) { Alert.alert('Erreur', error); return; }
+    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
     setDriver({ ...driver, is_available: !driver.is_available });
   };
 
@@ -94,7 +95,7 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
           text: 'Accepter',
           onPress: async () => {
             const { error } = await acceptDelivery(delivery.id, userId);
-            if (error) { Alert.alert('Erreur', error); return; }
+            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
             await load();
           },
         },

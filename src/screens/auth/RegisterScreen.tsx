@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ErrorGuide } from '@/components/ui/ErrorGuide';
 import { useAuth } from '@/context/AuthContext';
 import { CITY_LIST } from '@/constants/cities';
 import type { UserRole } from '@/types/models';
@@ -19,7 +20,7 @@ import {
 } from '@/lib/validators';
 
 interface RegisterScreenProps {
-  navigation: { goBack: () => void };
+  navigation: { goBack: () => void; navigate: (screen: string, params?: any) => void };
 }
 
 export function RegisterScreen({ navigation }: RegisterScreenProps) {
@@ -89,7 +90,7 @@ export function RegisterScreen({ navigation }: RegisterScreenProps) {
           <Input label="Nom complet *" value={fullName} onChangeText={setFullName} placeholder="Ex: Awa Compaoré" icon="user" autoCapitalize="words" />
           <Input label="Téléphone *" value={phone} onChangeText={setPhone} placeholder="Ex: 70 12 34 56" icon="phone" keyboardType="phone-pad" autoCorrect={false} />
           <Input label="Email *" value={email} onChangeText={setEmail} placeholder="votre@email.com" icon="mail" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
-          <Input label="Mot de passe *" value={password} onChangeText={setPassword} placeholder="8 caractères minimum" icon="lock" secureTextEntry error={error} />
+          <Input label="Mot de passe *" value={password} onChangeText={setPassword} placeholder="8 caractères minimum" icon="lock" secureTextEntry />
 
           <Text style={styles.label}>Je suis :</Text>
           <View style={styles.roleRow}>
@@ -111,6 +112,11 @@ export function RegisterScreen({ navigation }: RegisterScreenProps) {
           </View>
 
           <Button label="Créer mon compte" onPress={handleRegister} loading={loading} fullWidth />
+          <ErrorGuide
+            error={error}
+            onRetry={handleRegister}
+            onHelp={() => navigation.navigate('HelpCenter')}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>

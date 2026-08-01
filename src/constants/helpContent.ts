@@ -30,8 +30,8 @@ export interface HelpTutorial {
   steps: HelpTutorialStep[];
 }
 
-// Numéro de support WhatsApp (à remplacer par le vrai numéro Boutikplus)
-export const SUPPORT_WHATSAPP_NUMBER = '22670000000';
+// Numéro de support WhatsApp Boutikplus (+86 15952717063)
+export const SUPPORT_WHATSAPP_NUMBER = '8615952717063';
 export const SUPPORT_WHATSAPP_URL = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(
   "Bonjour, j'ai besoin d'aide sur Boutikplus.",
 )}`;
@@ -146,6 +146,46 @@ export const HELP_FAQ_SECTIONS: HelpFaqSection[] = [
       {
         q: 'Comment voir mes statistiques ?',
         a: "Dans « Promouvoir » → « Statistiques », voyez vos vues, clics et ventes par canal. Comparez WhatsApp vs TikTok pour savoir où investir.",
+      },
+    ],
+  },
+  {
+    id: 'depannage',
+    title: 'Dépannage & erreurs',
+    icon: 'life-buoy',
+    color: '#DC3545',
+    items: [
+      {
+        q: "Je n'arrive pas à me connecter, que faire ?",
+        a: "Vérifiez votre connexion internet (data ou Wi-Fi). Assurez-vous d'utiliser le bon email et mot de passe. Si vous avez oublié votre mot de passe, utilisez « Mot de passe oublié ». Si rien ne marche, écrivez-nous sur WhatsApp.",
+      },
+      {
+        q: "Je n'arrive pas à créer mon compte",
+        a: "Vérifiez que votre email est bien écrit (ex: votre.nom@example.com) et que votre mot de passe fait au moins 8 caractères. Si on vous dit que le compte existe déjà, connectez-vous avec cet email.",
+      },
+      {
+        q: "Je n'ai pas reçu l'email de confirmation",
+        a: "Attendez 2 à 5 minutes. Vérifiez vos spams ou courriers indésirables. Si rien n'arrive, demandez un renvoi depuis l'écran de connexion, ou contactez-nous sur WhatsApp.",
+      },
+      {
+        q: "L'application affiche « Service indisponible »",
+        a: "Ce n'est pas de votre faute. Vérifiez votre connexion internet. Si le problème continue, mettez à jour l'app avec la dernière version. En cas de persistance, écrivez-nous sur WhatsApp.",
+      },
+      {
+        q: "L'app est lente ou se bloque",
+        a: "Fermez complètement l'app et rouvrez-la. Vérifiez votre connexion. Si ça continue, supprimez les anciennes photos inutiles. Redémarrez votre téléphone si nécessaire.",
+      },
+      {
+        q: "Mes photos ne se chargent pas",
+        a: "Vérifiez votre connexion internet. Prenez les photos avec un bon éclairage. Si une photo est trop lourde, utilisez le Studio Photo intégré pour la réduire automatiquement.",
+      },
+      {
+        q: "Un client a payé mais je ne vois rien",
+        a: "Patientez quelques minutes, les notifications peuvent arriver avec un léger délai. Vérifiez l'onglet « Commandes ». Si le paiement n'apparaît toujours pas, demandez au client la capture d'écran et contactez le support.",
+      },
+      {
+        q: "Le paiement Mobile Money a échoué",
+        a: "Vérifiez votre solde sur Orange Money ou Moov Money. Vérifiez votre code secret. Si l'argent a été débité sans confirmation, contactez votre opérateur puis le support Boutikplus avec la capture.",
       },
     ],
   },

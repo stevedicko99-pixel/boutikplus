@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { useNotifications } from '@/context/NotificationContext';
 import {
   getDeliveryById,
@@ -79,7 +80,7 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
         setActing(true);
         const { error } = await cancelDelivery(delivery.id, role, reason || undefined);
         setActing(false);
-        if (error) { Alert.alert('Erreur', error); return; }
+        if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
         await refreshAfterAction();
       },
     ) ?? Alert.alert(
@@ -94,7 +95,7 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
             setActing(true);
             const { error } = await cancelDelivery(delivery.id, role);
             setActing(false);
-            if (error) { Alert.alert('Erreur', error); return; }
+            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
             await refreshAfterAction();
           },
         },
@@ -116,7 +117,7 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
             setActing(true);
             const { error } = await requestRefund(delivery.id, 'Litige signalé par le vendeur');
             setActing(false);
-            if (error) { Alert.alert('Erreur', error); return; }
+            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
             await refreshAfterAction();
             Alert.alert('Demande envoyée', 'Votre demande de remboursement a été enregistrée.');
           },
@@ -130,7 +131,7 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
     setActing(true);
     const { error } = await validateDeliveryPayment(delivery.id);
     setActing(false);
-    if (error) { Alert.alert('Erreur', error); return; }
+    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
     await refreshAfterAction();
     Alert.alert('Paiement validé ✓', 'Le paiement a été confirmé.');
   };

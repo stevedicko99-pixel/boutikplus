@@ -16,9 +16,13 @@ export function RootNavigator() {
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     const isAuthenticated = Boolean(profile);
 
+    // Routes accessibles SANS connexion (aide, tutoriels) — l'utilisateur
+    // peut consulter l'aide même avant d'être connecté.
+    const PUBLIC_ROUTES = ['Login', 'Register', 'HelpCenter', 'HelpTutorial'];
+
     if (isAuthenticated && (currentRoute === 'Login' || currentRoute === 'Register' || !currentRoute)) {
       navRef.current.resetRoot({ index: 0, routes: [{ name: 'Home' }] });
-    } else if (!isAuthenticated && currentRoute && currentRoute !== 'Login' && currentRoute !== 'Register') {
+    } else if (!isAuthenticated && currentRoute && !PUBLIC_ROUTES.includes(currentRoute)) {
       navRef.current.resetRoot({ index: 0, routes: [{ name: 'Login' }] });
     }
   }, [profile, loading]);

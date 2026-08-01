@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { useAuth } from '@/context/AuthContext';
 import { createShop } from '@/lib/dataService';
 import { pickAndCompressImage, uploadImage } from '@/lib/storage';
@@ -52,7 +53,7 @@ export function CreateShopScreen({ navigation }: CreateShopScreenProps) {
       logoUrl: logoUrl && logoUri ? null : null,
     });
     setLoading(false);
-    if (error) { Alert.alert('Erreur', error); return; }
+    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
     Alert.alert('Succès 🎉', 'Votre boutique a été créée !', [{ text: 'OK', onPress: () => navigation.navigate('SellerDashboard') }]);
   };
 

@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ErrorGuide } from '@/components/ui/ErrorGuide';
 import { useAuth } from '@/context/AuthContext';
 import {
   validateEmail,
@@ -12,13 +13,32 @@ import {
   normalizeText,
 } from '@/lib/validators';
 
-// Lien de téléchargement de l'APK Android (généré par EAS Build).
-// ⚠️ Les URLs EAS expirent (~30 jours). Remplacer par un lien permanent
-// (Google Drive / hébergement perso) pour la distribution long terme.
-const APK_DOWNLOAD_URL = 'https://expo.dev/artifacts/eas/GY-JZpU0qMLTLUfRNgia_7m3HSGbyzOCudJAB-ziHR8.apk';
+// APK Android hébergé sur le site (Vercel) sous un nom de fichier fixe
+// « Boutikplus+.apk ». Avantage vs. URL EAS : lien permanent + nom stable.
+const APK_DOWNLOAD_URL = '/download/Boutikplus+.apk';
+const APK_DOWNLOAD_FILENAME = 'Boutikplus+.apk';
 
 interface LoginScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void };
+}
+
+/**
+ * Déclenche le téléchargement de l'APK avec le bon nom de fichier.
+ * - Web : utilise un <a download> (force le nom « Boutikplus+.apk »).
+ * - Natif : ouvre l'URL dans le navigateur système.
+ */
+function downloadApk() {
+  if (Platform.OS === 'web') {
+    const a = document.createElement('a');
+    a.href = APK_DOWNLOAD_URL;
+    a.download = APK_DOWNLOAD_FILENAME;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
+  Linking.openURL(APK_DOWNLOAD_URL).catch(() => {});
 }
 
 export function LoginScreen({ navigation }: LoginScreenProps) {
@@ -76,9 +96,13 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
             placeholder="••••••••"
             icon="lock"
             secureTextEntry
-            error={error}
           />
           <Button label="Se connecter" onPress={handleLogin} loading={loading} fullWidth />
+          <ErrorGuide
+            error={error}
+            onRetry={handleLogin}
+            onHelp={() => navigation.navigate('HelpCenter')}
+          />
         </View>
 
         <Pressable style={styles.registerLink} onPress={() => navigation.navigate('Register')}>
@@ -100,12 +124,12 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
             </View>
             <Pressable
               style={styles.downloadBtn}
-              onPress={() => Linking.openURL(APK_DOWNLOAD_URL)}
+              onPress={downloadApk}
               accessibilityRole="link"
-              accessibilityLabel="Télécharger l'APK Android"
+              accessibilityLabel="Télécharger l'application Boutikplus pour Android"
             >
               <Feather name="arrow-down-circle" size={18} color={colors.primary} />
-              <Text style={styles.downloadBtnText}>APK</Text>
+              <Text style={styles.downloadBtnText}>Télécharger</Text>
             </Pressable>
           </View>
         )}

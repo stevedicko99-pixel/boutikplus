@@ -6,25 +6,28 @@ import { CartProvider } from '@/context/CartContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { ConnectivityProvider } from '@/context/ConnectivityContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { colors } from '@/theme';
 import { StyleSheet } from 'react-native';
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <NotificationProvider>
-            <ConnectivityProvider>
-              <CartProvider>
-                <StatusBar style="dark" />
-                <RootNavigator />
-              </CartProvider>
-            </ConnectivityProvider>
-          </NotificationProvider>
-        </AuthProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={styles.root}>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <NotificationProvider>
+              <ConnectivityProvider>
+                <CartProvider>
+                  <StatusBar style="dark" />
+                  <RootNavigator />
+                </CartProvider>
+              </ConnectivityProvider>
+            </NotificationProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
 
