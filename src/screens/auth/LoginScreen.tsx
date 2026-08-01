@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -11,6 +11,11 @@ import {
   validatePassword,
   normalizeText,
 } from '@/lib/validators';
+
+// Lien de téléchargement de l'APK Android (généré par EAS Build).
+// ⚠️ Les URLs EAS expirent (~30 jours). Remplacer par un lien permanent
+// (Google Drive / hébergement perso) pour la distribution long terme.
+const APK_DOWNLOAD_URL = 'https://expo.dev/artifacts/eas/GY-JZpU0qMLTLUfRNgia_7m3HSGbyzOCudJAB-ziHR8.apk';
 
 interface LoginScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void };
@@ -81,6 +86,29 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
             Pas encore de compte ? <Text style={styles.registerBold}>Créer un compte</Text>
           </Text>
         </Pressable>
+
+        {Platform.OS === 'web' && (
+          <View style={styles.downloadCard}>
+            <View style={styles.downloadIcon}>
+              <Feather name="download" size={22} color={colors.textInverse} />
+            </View>
+            <View style={styles.downloadTextWrap}>
+              <Text style={styles.downloadTitle}>Boutikplus sur Android</Text>
+              <Text style={styles.downloadSub}>
+                Installez l'app sur votre téléphone pour vendre et acheter partout.
+              </Text>
+            </View>
+            <Pressable
+              style={styles.downloadBtn}
+              onPress={() => Linking.openURL(APK_DOWNLOAD_URL)}
+              accessibilityRole="link"
+              accessibilityLabel="Télécharger l'APK Android"
+            >
+              <Feather name="arrow-down-circle" size={18} color={colors.primary} />
+              <Text style={styles.downloadBtnText}>APK</Text>
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -120,4 +148,53 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   registerBold: { color: colors.primary, fontWeight: typography.weights.semibold },
+  downloadCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginTop: spacing.xxl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  downloadIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadTextWrap: { flex: 1 },
+  downloadTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+  },
+  downloadSub: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    gap: spacing.xs,
+  },
+  downloadBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
+  },
 });
