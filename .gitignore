@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+
+# Env
+.env
+.env.local
+
+# Supabase local link (contient des infos de liaison projet)
+supabase/.temp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Typescript
+*.tsbuildinfo
+
+# Testing
+coverage/
+
+# Bundler
+.bundle/

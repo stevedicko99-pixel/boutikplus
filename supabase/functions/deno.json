@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noUncheckedIndexedAccess": false,
+    "strict": true,
+    "lib": ["deno.ns", "deno.window", "dom"],
+    "types": []
+  },
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "supabase": "../_shared/supabase.ts"
+  },
+  "tasks": {
+    "serve": "supabase functions serve"
+  }
+}

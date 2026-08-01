@@ -1,0 +1,113 @@
+{
+  "expo": {
+    "name": "Boutikplus",
+    "slug": "boutikplus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "boutikplus",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "owner": "Chriss1137",
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FF6B00"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.boutikplus.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Boutikplus a besoin de votre appareil photo pour prendre des photos de produits et des preuves de paiement.",
+        "NSPhotoLibraryUsageDescription": "Boutikplus a besoin d'accéder à vos photos pour ajouter des produits et des preuves de paiement.",
+        "NSPhotoLibraryAddUsageDescription": "Boutikplus enregistre les photos de produits dans votre galerie.",
+        "NSMicrophoneUsageDescription": "Boutikplus utilise le microphone pour enregistrer des vidéos de présentation des produits.",
+        "LSApplicationQueriesSchemes": [
+          "whatsapp",
+          "tiktok",
+          "snapchat",
+          "youtube",
+          "telprompt"
+        ],
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FF6B00"
+      },
+      "package": "com.boutikplus.app",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "boutikplus" }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "description": "Boutikplus — La marketplace des jeunes vendeurs informels du Faso. Créez votre boutique, partagez vos produits sur WhatsApp, TikTok et Snapchat.",
+      "name": "Boutikplus",
+      "shortName": "Boutikplus",
+      "lang": "fr",
+      "themeColor": "#FF6B00",
+      "backgroundColor": "#FFFFFF"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Boutikplus a besoin d'accéder à vos photos pour ajouter des produits et des preuves de paiement.",
+          "cameraPermission": "Boutikplus a besoin de votre appareil photo pour prendre des photos de produits.",
+          "microphonePermission": "Boutikplus utilise le microphone pour enregistrer des vidéos de présentation."
+        }
+      ]
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "TODO_EAS_PROJECT_ID_APRES_PREMIER_BUILD"
+      }
+    }
+  }
+}

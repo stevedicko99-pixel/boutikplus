@@ -1,0 +1,94 @@
+# ============================================================
+# Boutikplus — Configuration Supabase CLI
+# ============================================================
+# Ce fichier configure le CLI Supabase pour le développement local
+# et le déploiement. Installez le CLI : https://supabase.com/docs/guides/cli
+#
+# Commandes utiles :
+#   supabase init               # initialise le projet local (déjà fait)
+#   supabase start              # démarre un stack local (Postgres, Auth, Storage, Realtime)
+#   supabase db reset           # ré-applique schema.sql + policies.sql + seed.sql
+#   supabase db push            # pousse le schéma local vers le projet distant
+#   supabase functions deploy <name>  # déploie une Edge Function
+#   supabase link --project-ref <ref> # relie ce dossier à un projet Supabase distant
+# ============================================================
+
+project_id = "boutikplus"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 15
+max_client_conn = 100
+
+[realtime]
+enabled = true
+# Les tables exposées en Realtime sont ajoutées via
+# ALTER PUBLICATION supabase_realtime ADD TABLE ... dans schema.sql
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:8081"
+additional_redirect_urls = ["https://boutikplus.app://", "boutikplus://"]
+jwt_expiry = 3600
+refresh_token_rotation_enabled = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+template = {}
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+template = "Votre code de confirmation Boutikplus est {{ .Code }}"
+
+[auth.external.apple]
+enabled = false
+
+[auth.external.google]
+enabled = false
+
+# ============================================================
+# Edge Functions
+# ============================================================
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.payment-webhook]
+verify_jwt = false  # webhook appelé par CinetPay, pas par l'app
+
+[functions.send-push-notification]
+verify_jwt = true
+
+[functions.cleanup-expired-data]
+verify_jwt = false  # tâche planifiée (cron)
