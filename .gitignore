@@ -34,6 +34,10 @@ yarn-error.*
 # Supabase local link (contient des infos de liaison projet)
 supabase/.temp/
 
+# Dépendances locales extraites / cache de build
+_webdeps/
+web-build-test/
+
 # IDE
 .idea/
 .vscode/
