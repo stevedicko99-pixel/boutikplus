@@ -23,14 +23,10 @@
     "production": {
       "distribution": "store",
       "android": {
-        "buildType": "app-bundle",
-        "minify": true
+        "buildType": "app-bundle"
       },
       "ios": {
-        "buildConfiguration": "Release",
-        "config": {
-          "usesNonExemptEncryption": false
-        }
+        "buildConfiguration": "Release"
       },
       "channel": "production",
       "env": {

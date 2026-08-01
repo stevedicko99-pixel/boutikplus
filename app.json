@@ -8,7 +8,7 @@
     "scheme": "boutikplus",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "owner": "Chriss1137",
+    "owner": "chriss1137s-team",
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
@@ -70,7 +70,9 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "boutikplus" }
+            {
+              "scheme": "boutikplus"
+            }
           ],
           "category": [
             "BROWSABLE",
@@ -106,7 +108,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "TODO_EAS_PROJECT_ID_APRES_PREMIER_BUILD"
+        "projectId": "2f3f0518-75bf-4d1d-bfa0-aa9a3198d4f8"
       }
     }
   }
