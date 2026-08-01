@@ -101,6 +101,14 @@
           "cameraPermission": "Boutikplus a besoin de votre appareil photo pour prendre des photos de produits.",
           "microphonePermission": "Boutikplus utilise le microphone pour enregistrer des vidéos de présentation."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
       ]
     ],
     "experiments": {
