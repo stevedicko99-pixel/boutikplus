@@ -32,18 +32,28 @@ BEGIN
         bucket_id,
         true,
         CASE
-          WHEN bucket_id = 'product-images' THEN 5242880  -- 5 MB
+          WHEN bucket_id = 'product-images' THEN 10485760  -- 10 MB
+          WHEN bucket_id IN ('shop-logos', 'shop-covers', 'profile-avatars', 'ai-source-images') THEN 10485760  -- 10 MB
           WHEN bucket_id IN ('payment-proofs', 'delivery-proofs') THEN 26214400  -- 25 MB
           ELSE 5242880  -- 5 MB par défaut
         END,
-        CASE
-          WHEN bucket_id IN ('payment-proofs', 'delivery-proofs')
-            THEN ARRAY['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm']::TEXT[]
-          ELSE ARRAY['image/jpeg', 'image/png', 'image/webp']::TEXT[]
-        END
+        NULL  -- Aucune restriction MIME : la compression convertit tout en JPEG
       );
     END IF;
   END LOOP;
+
+  -- Mettre à jour les buckets existants : lever les restrictions MIME
+  -- et augmenter la limite de taille (les anciens buckets avaient 5MB + MIME restrictif)
+  UPDATE storage.buckets
+  SET
+    file_size_limit = CASE
+      WHEN id = 'product-images' THEN 10485760
+      WHEN id IN ('shop-logos', 'shop-covers', 'profile-avatars', 'ai-source-images') THEN 10485760
+      WHEN id IN ('payment-proofs', 'delivery-proofs') THEN 26214400
+      ELSE 5242880
+    END,
+    allowed_mime_types = NULL
+  WHERE id IN ('shop-logos', 'shop-covers', 'product-images', 'profile-avatars', 'ai-source-images');
 END $$;
 
 -- ============================================================

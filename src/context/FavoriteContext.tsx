@@ -83,13 +83,20 @@ export function FavoriteProvider({ children }: { children: ReactNode }) {
     async (productId: string): Promise<{ added?: boolean } | null> => {
       const result = await toggleFavoriteRpc(productId);
       if (result) {
+        // Mise à jour optimiste immédiate des IDs
         setFavoriteIds((prev) => {
           const next = new Set(prev);
           if (result.added) next.add(productId);
           else next.delete(productId);
           return next;
         });
-        // Rafraîchir la wishlist en arrière-plan pour garder la liste à jour
+        // Mise à jour optimiste immédiate de la wishlist :
+        // si on retire un favori, on l'enlève tout de suite de la liste
+        // sans attendre le refresh complet (meilleur UX, pas de lag visible)
+        if (!result.added) {
+          setWishlist((prev) => prev.filter((p) => p.id !== productId));
+        }
+        // Rafraîchir la wishlist en arrière-plan pour synchroniser avec le serveur
         refreshWishlist();
       }
       return result;

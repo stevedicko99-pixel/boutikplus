@@ -242,11 +242,25 @@ export const uploadImage = async (
   const path = `${userId}/${fileName}`;
 
   const formData = new FormData();
-  formData.append('file', {
-    uri: localUri,
-    name: fileName,
-    type: 'image/jpeg',
-  } as unknown as Blob);
+
+  // Sur web, les navigateurs ne supportent pas le pattern RN { uri, name, type }.
+  // Il faut convertir les data:/blob: URIs en vrais Blob avant FormData.append.
+  if (Platform.OS === 'web' && (localUri.startsWith('data:') || localUri.startsWith('blob:'))) {
+    try {
+      const resp = await fetch(localUri);
+      const blob = await resp.blob();
+      formData.append('file', blob, fileName);
+    } catch (e) {
+      logger.error('uploadImage: data→blob conversion failed', e);
+      throw new UploadError('Conversion d\'image impossible sur web', 'UPLOAD_FAILED');
+    }
+  } else {
+    formData.append('file', {
+      uri: localUri,
+      name: fileName,
+      type: 'image/jpeg',
+    } as unknown as Blob);
+  }
 
   // Timeout pour éviter de bloquer indéfiniment (réseaux burkinabè instables)
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -277,10 +291,15 @@ export const uploadImage = async (
 
       if (error) {
         logger.error('Upload error', error);
-        if (error.message?.includes('bucket') || error.message?.includes('not found') || error.message?.includes('JWT')) {
-          return null;
-        }
-        throw new UploadError(`Échec de l'upload : ${error.message}`, 'UPLOAD_FAILED');
+        // Ne plus masquer les erreurs bucket/JWT — l'utilisateur doit savoir
+        throw new UploadError(
+          error.message?.includes('bucket')
+            ? `Bucket de stockage introuvable (${bucket}). Contactez un admin.`
+            : error.message?.includes('policy') || error.message?.includes('row-level')
+              ? `Permission refusée pour l'upload (${bucket}).`
+              : `Échec de l'upload : ${error.message}`,
+          'UPLOAD_FAILED',
+        );
       }
 
       if (onProgress) {

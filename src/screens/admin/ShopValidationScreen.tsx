@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert, Modal, TextInput } from 'react-native';
+import { useState, useCallback } from 'react';
+import { StyleSheet, View, Text, FlatList, Pressable, Alert, Modal, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getPendingShops, approveShop, rejectShop, toggleShopVerified, deleteShop } from '@/lib/dataService';
+import { getAllShops, approveShop, rejectShop, toggleShopVerified, deleteShop } from '@/lib/dataService';
 import { getCategoryName } from '@/constants/categories';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,12 +16,15 @@ import { Input } from '@/components/ui/Input';
 import { formatRelativeDate } from '@/lib/format';
 import type { Shop } from '@/types/models';
 
+type FilterTab = 'all' | 'pending' | 'active' | 'rejected';
+
 interface ShopValidationScreenProps {
   navigation: { goBack: () => void };
 }
 
 export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) {
-  const [shops, setShops] = useState<Shop[]>([]);
+  const [allShops, setAllShops] = useState<Shop[]>([]);
+  const [filter, setFilter] = useState<FilterTab>('all');
   const [loading, setLoading] = useState(true);
   const [rejectModal, setRejectModal] = useState<Shop | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -28,12 +32,26 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
 
   const load = useCallback(async () => {
     setLoading(true);
-    const data = await getPendingShops();
-    setShops(data);
+    const data = await getAllShops();
+    setAllShops(data);
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => { load(); }, [load]),
+  );
+
+  const filteredShops = allShops.filter((s) => {
+    if (filter === 'all') return true;
+    return s.status === filter;
+  });
+
+  const counts = {
+    all: allShops.length,
+    pending: allShops.filter((s) => s.status === 'pending').length,
+    active: allShops.filter((s) => s.status === 'active').length,
+    rejected: allShops.filter((s) => s.status === 'rejected').length,
+  };
 
   const handleApprove = async (shop: Shop) => {
     Alert.alert('Approuver la boutique', `Valider "${shop.name}" et la rendre visible sur la marketplace ?`, [
@@ -45,7 +63,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
         if (error) Alert.alert('Erreur', error);
         else {
           Alert.alert('Validée ✓', 'La boutique est maintenant visible sur la marketplace. Le vendeur a été notifié.');
-          setShops((prev) => prev.filter((s) => s.id !== shop.id));
+          setAllShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, status: 'active' as const } : s));
         }
       } },
     ]);
@@ -68,7 +86,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
     if (error) Alert.alert('Erreur', error);
     else {
       Alert.alert('Refusée', `La boutique "${rejectModal.name}" a été refusée. Le vendeur sera notifié avec le motif.`);
-      setShops((prev) => prev.filter((s) => s.id !== rejectModal.id));
+      setAllShops((prev) => prev.filter((s) => s.id !== rejectModal.id));
     }
     setRejectModal(null);
   };
@@ -89,7 +107,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
             setBusy(null);
             if (error) Alert.alert('Erreur', error);
             else {
-              setShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, is_verified: nextVerified } : s));
+              setAllShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, is_verified: nextVerified } : s));
               Alert.alert('Terminé', `Badge ${nextVerified ? 'attribué' : 'retiré'}.`);
             }
           },
@@ -114,7 +132,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
             if (error) Alert.alert('Erreur', error);
             else {
               Alert.alert('Supprimée', `"${shop.name}" a été supprimée définitivement.`);
-              setShops((prev) => prev.filter((s) => s.id !== shop.id));
+              setAllShops((prev) => prev.filter((s) => s.id !== shop.id));
             }
           },
         },
@@ -128,17 +146,37 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
         <Pressable onPress={navigation.goBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retour">
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>Validation boutiques</Text>
+        <Text style={styles.title}>Gestion des boutiques</Text>
         <View style={{ width: 24 }} />
+      </View>
+
+      {/* Onglets de filtre */}
+      <View style={styles.filterRow}>
+        {([
+          { key: 'all' as FilterTab, label: 'Toutes', count: counts.all },
+          { key: 'pending' as FilterTab, label: 'En attente', count: counts.pending },
+          { key: 'active' as FilterTab, label: 'Actives', count: counts.active },
+          { key: 'rejected' as FilterTab, label: 'Refusées', count: counts.rejected },
+        ]).map((tab) => (
+          <Pressable
+            key={tab.key}
+            style={[styles.filterTab, filter === tab.key && styles.filterTabActive]}
+            onPress={() => setFilter(tab.key)}
+          >
+            <Text style={[styles.filterTabText, filter === tab.key && styles.filterTabTextActive]}>
+              {tab.label} ({tab.count})
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       {loading ? (
         <LoadingSpinner />
-      ) : shops.length === 0 ? (
-        <EmptyState icon="check-circle" title="Tout est à jour" message="Aucune boutique en attente de validation" />
+      ) : filteredShops.length === 0 ? (
+        <EmptyState icon="briefcase" title="Aucune boutique" message={`Aucune boutique ${filter === 'all' ? '' : 'dans cette catégorie'}`} />
       ) : (
         <FlatList
-          data={shops}
+          data={filteredShops}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item: shop }) => (
@@ -154,10 +192,25 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
                   <Text style={styles.shopMeta}>{shop.city} · {getCategoryName(shop.category_id)}</Text>
                   <Text style={styles.shopDate}>Créée {formatRelativeDate(shop.created_at)}</Text>
                 </View>
-                <Badge label="En attente" color={colors.warning} bgColor="#FFF8E1" />
+                {shop.status === 'pending' ? (
+                  <Badge label="En attente" color={colors.warning} bgColor="#FFF8E1" />
+                ) : shop.status === 'active' ? (
+                  <Badge label="Active" color={colors.success} bgColor="#E6F7EE" />
+                ) : shop.status === 'rejected' ? (
+                  <Badge label="Refusée" color={colors.danger} bgColor="#FDECEC" />
+                ) : (
+                  <Badge label="En pause" color={colors.textMuted} bgColor={colors.surfaceAlt} />
+                )}
               </View>
 
               {shop.description ? <Text style={styles.shopDesc} numberOfLines={2}>{shop.description}</Text> : null}
+
+              {shop.is_verified ? (
+                <View style={styles.verifiedRow}>
+                  <Feather name="check-circle" size={13} color={colors.primary} />
+                  <Text style={styles.verifiedText}>Boutique vérifiée</Text>
+                </View>
+              ) : null}
 
               <View style={styles.payRow}>
                 <Feather name="credit-card" size={14} color={colors.success} />
@@ -170,26 +223,30 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
               </View>
 
               <View style={styles.actionRow}>
-                <Button
-                  label="Refuser"
-                  variant="outline"
-                  onPress={() => handleOpenReject(shop)}
-                  style={{ flex: 1 }}
-                  size="sm"
-                  loading={busy === shop.id}
-                />
+                {shop.status === 'pending' ? (
+                  <>
+                    <Button
+                      label="Refuser"
+                      variant="outline"
+                      onPress={() => handleOpenReject(shop)}
+                      style={{ flex: 1 }}
+                      size="sm"
+                      loading={busy === shop.id}
+                    />
+                    <Button
+                      label="Approuver"
+                      onPress={() => handleApprove(shop)}
+                      style={{ flex: 1, marginLeft: spacing.sm }}
+                      size="sm"
+                      loading={busy === shop.id}
+                    />
+                  </>
+                ) : null}
                 <Button
                   label={shop.is_verified ? 'Retirer badge' : 'Badge vérifiée'}
                   variant="outline"
                   onPress={() => handleToggleVerified(shop)}
-                  style={{ flex: 1.2, marginHorizontal: spacing.sm }}
-                  size="sm"
-                  loading={busy === shop.id}
-                />
-                <Button
-                  label="Approuver"
-                  onPress={() => handleApprove(shop)}
-                  style={{ flex: 1 }}
+                  style={{ flex: shop.status === 'pending' ? 1.2 : 1, marginHorizontal: shop.status === 'pending' ? 0 : 0 }}
                   size="sm"
                   loading={busy === shop.id}
                 />
@@ -236,6 +293,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
+  filterRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.xs },
+  filterTab: { paddingVertical: spacing.xs, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.borderLight },
+  filterTabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterTabText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, fontWeight: typography.weights.semibold, color: colors.textMuted },
+  filterTabTextActive: { color: colors.textInverse },
+  verifiedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
+  verifiedText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.primary, fontWeight: typography.weights.semibold },
   list: { padding: spacing.lg, paddingTop: 0 },
   shopCard: { marginBottom: spacing.md },
   shopHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm },

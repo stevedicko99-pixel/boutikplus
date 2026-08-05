@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getPendingShops, getReports, getProducts, getUserCount } from '@/lib/dataService';
+import { getPendingShops, getAllShops, getReports, getProducts, getUserCount } from '@/lib/dataService';
 import { PageLoader } from '@/components/ui/PageLoader';
 import { formatRelativeDate } from '@/lib/format';
 import type { Shop } from '@/types/models';
@@ -13,24 +14,46 @@ interface AdminDashboardScreenProps {
 }
 
 export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) {
-  const [shops, setShops] = useState<Shop[]>([]);
+  const [pendingShops, setPendingShops] = useState<Shop[]>([]);
+  const [allShops, setAllShops] = useState<Shop[]>([]);
+  const [recentShops, setRecentShops] = useState<Shop[]>([]);
   const [reports, setReports] = useState<any[]>([]);
   const [productCount, setProductCount] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const [s, r, p, uc] = await Promise.all([getPendingShops(), getReports(), getProducts({ limit: 999 }), getUserCount()]);
-      setShops(s);
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const [pending, all, r, p, uc] = await Promise.all([
+        getPendingShops(),
+        getAllShops(),
+        getReports(),
+        getProducts({ limit: 999 }),
+        getUserCount(),
+      ]);
+      setPendingShops(pending);
+      setAllShops(all);
+      setRecentShops(all.slice(0, 5));
       setReports(r);
       setProductCount(p.length);
       setUserCount(uc);
+    } finally {
       setLoading(false);
-    })();
+      setRefreshing(false);
+    }
   }, []);
 
+  // ⚡ Auto-refresh à chaque focus — l'admin voit les changements en temps réel
+  useFocusEffect(
+    useCallback(() => { load(); }, [load]),
+  );
+
   if (loading) return <SafeAreaView style={styles.container} edges={['top']}><PageLoader /></SafeAreaView>;
+
+  const activeShops = allShops.filter((s) => s.status === 'active').length;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -48,31 +71,71 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
           <Text style={styles.siteBtnText}>Site</Text>
         </Pressable>
       </View>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Statistiques globales */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
+      >
+        {/* Statistiques globales — TOUTES les boutiques, pas juste pending */}
         <View style={styles.statsGrid}>
-          <StatBox icon="briefcase" value={`${shops.length}`} label="Boutiques" color={colors.primary} onPress={() => navigation.navigate('ShopValidation')} />
-          <StatBox icon="package" value={`${productCount}`} label="Produits" color={colors.secondary} />
+          <StatBox icon="briefcase" value={`${allShops.length}`} sublabel={`${activeShops} actives`} label="Boutiques" color={colors.primary} onPress={() => navigation.navigate('ShopValidation')} />
+          <StatBox icon="package" value={`${productCount}`} label="Produits" color={colors.secondary} onPress={() => navigation.navigate('ProductManagement')} />
           <StatBox icon="alert-circle" value={`${reports.length}`} label="Signalements" color={colors.danger} onPress={() => navigation.navigate('Reports')} />
           <StatBox icon="users" value={`${userCount}`} label="Utilisateurs" color={colors.success} />
         </View>
 
-        {/* Boutiques à valider */}
+        {/* Boutiques à valider (pending uniquement) */}
+        {pendingShops.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>En attente de validation</Text>
+              <Pressable onPress={() => navigation.navigate('ShopValidation')}><Text style={styles.seeAll}>Voir tout</Text></Pressable>
+            </View>
+            {pendingShops.slice(0, 3).map((shop) => (
+              <Pressable key={shop.id} style={styles.shopRow} onPress={() => navigation.navigate('ShopValidation')}>
+                <View style={styles.shopLogo}><Feather name="briefcase" size={18} color={colors.warning} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
+                  <Text style={styles.shopMeta}>{shop.city} · {formatRelativeDate(shop.created_at)}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: '#FFF8E1' }]}><Text style={[styles.statusBadgeText, { color: colors.warning }]}>En attente</Text></View>
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Toutes les boutiques (récentes) */}
         <View style={styles.section}>
           <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Boutiques à valider</Text>
-            <Pressable onPress={() => navigation.navigate('ShopValidation')}><Text style={styles.seeAll}>Voir tout</Text></Pressable>
+            <Text style={styles.sectionTitle}>Toutes les boutiques</Text>
+            <Pressable onPress={() => navigation.navigate('ShopValidation')}><Text style={styles.seeAll}>Voir tout ({allShops.length})</Text></Pressable>
           </View>
-          {shops.slice(0, 3).map((shop) => (
-            <Pressable key={shop.id} style={styles.shopRow} onPress={() => navigation.navigate('ShopValidation')}>
-              <View style={styles.shopLogo}><Feather name="briefcase" size={18} color={colors.primary} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
-                <Text style={styles.shopMeta}>{shop.city} · {formatRelativeDate(shop.created_at)}</Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={colors.textMuted} />
-            </Pressable>
-          ))}
+          {recentShops.length === 0 ? (
+            <Text style={styles.emptyText}>Aucune boutique pour le moment</Text>
+          ) : (
+            recentShops.map((shop) => (
+              <Pressable key={shop.id} style={styles.shopRow} onPress={() => navigation.navigate('ShopValidation')}>
+                <View style={styles.shopLogo}>
+                  {shop.logo_url ? (
+                    <View style={styles.shopLogoImg} />
+                  ) : (
+                    <Feather name="briefcase" size={18} color={colors.primary} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
+                  <Text style={styles.shopMeta}>{shop.city} · {formatRelativeDate(shop.created_at)}</Text>
+                </View>
+                <View style={[styles.statusBadge, shop.status === 'active' ? styles.statusActive : shop.status === 'pending' ? styles.statusPending : styles.statusInactive]}>
+                  <Text style={[styles.statusBadgeText, shop.status === 'active' ? { color: colors.success } : shop.status === 'pending' ? { color: colors.warning } : { color: colors.textMuted }]}>
+                    {shop.status === 'active' ? 'Active' : shop.status === 'pending' ? 'En attente' : shop.status === 'rejected' ? 'Refusée' : 'En pause'}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              </Pressable>
+            ))
+          )}
         </View>
 
         {/* Signalements */}
@@ -97,17 +160,23 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
           )}
         </View>
 
-        {/* Actions rapides */}
+        {/* Actions rapides — accès complet à la modération */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions</Text>
+          <Text style={styles.sectionTitle}>Modération</Text>
           <View style={styles.actionGrid}>
             <Pressable style={styles.actionCard} onPress={() => navigation.navigate('ShopValidation')}>
               <Feather name="check-square" size={24} color={colors.primary} />
-              <Text style={styles.actionText}>Valider boutiques</Text>
+              <Text style={styles.actionText}>Gérer boutiques</Text>
+              {pendingShops.length > 0 ? <View style={styles.actionBadge}><Text style={styles.actionBadgeText}>{pendingShops.length}</Text></View> : null}
+            </Pressable>
+            <Pressable style={styles.actionCard} onPress={() => navigation.navigate('ProductManagement')}>
+              <Feather name="package" size={24} color={colors.secondary} />
+              <Text style={styles.actionText}>Gérer produits</Text>
             </Pressable>
             <Pressable style={styles.actionCard} onPress={() => navigation.navigate('Reports')}>
               <Feather name="flag" size={24} color={colors.danger} />
-              <Text style={styles.actionText}>Traiter signalements</Text>
+              <Text style={styles.actionText}>Signalements</Text>
+              {reports.length > 0 ? <View style={[styles.actionBadge, { backgroundColor: colors.danger }]}><Text style={styles.actionBadgeText}>{reports.length}</Text></View> : null}
             </Pressable>
           </View>
         </View>
@@ -116,12 +185,13 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
   );
 }
 
-function StatBox({ icon, value, label, color, onPress }: { icon: string; value: string; label: string; color: string; onPress?: () => void }) {
+function StatBox({ icon, value, label, sublabel, color, onPress }: { icon: string; value: string; label: string; sublabel?: string; color: string; onPress?: () => void }) {
   return (
     <Pressable style={styles.statBox} onPress={onPress}>
       <View style={[styles.statIcon, { backgroundColor: color + '18' }]}><Feather name={icon as any} size={20} color={color} /></View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+      {sublabel ? <Text style={styles.statSublabel}>{sublabel}</Text> : null}
     </Pressable>
   );
 }
@@ -136,14 +206,21 @@ const styles = StyleSheet.create({
   statIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   statValue: { fontFamily: typography.fontFamily, fontSize: typography.sizes.hero, fontWeight: typography.weights.bold, color: colors.text },
   statLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted },
+  statSublabel: { fontFamily: typography.fontFamily, fontSize: 10, color: colors.success, fontWeight: typography.weights.semibold, marginTop: 2 },
   section: { marginBottom: spacing.xl },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
   sectionTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text },
   seeAll: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.primary, fontWeight: typography.weights.semibold },
   shopRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
-  shopLogo: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFF0E0', alignItems: 'center', justifyContent: 'center' },
+  shopLogo: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFF0E0', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  shopLogoImg: { width: '100%', height: '100%', backgroundColor: '#FFF0E0' },
   shopName: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.text },
   shopMeta: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
+  statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
+  statusActive: { backgroundColor: '#E6F7EE' },
+  statusPending: { backgroundColor: '#FFF8E1' },
+  statusInactive: { backgroundColor: colors.surfaceAlt },
+  statusBadgeText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, fontWeight: typography.weights.semibold },
   reportRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
   reportIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   reportReason: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },
@@ -154,6 +231,8 @@ const styles = StyleSheet.create({
   actionGrid: { flexDirection: 'row', gap: spacing.md },
   actionCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
   actionText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },
+  actionBadge: { position: 'absolute', top: spacing.sm, right: spacing.sm, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  actionBadgeText: { fontFamily: typography.fontFamily, fontSize: 10, fontWeight: typography.weights.bold, color: colors.textInverse },
   siteBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.primaryLight + '33', paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill },
   siteBtnText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, fontWeight: typography.weights.bold, color: colors.primary },
 });
