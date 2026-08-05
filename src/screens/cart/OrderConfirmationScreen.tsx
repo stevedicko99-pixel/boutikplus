@@ -95,6 +95,8 @@ export function OrderConfirmationScreen({ navigation, route }: OrderConfirmation
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { padding: spacing.lg, paddingBottom: 120 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   successWrap: { alignItems: 'center', paddingVertical: spacing.xl },
   successIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
   successTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text, marginBottom: spacing.xs },

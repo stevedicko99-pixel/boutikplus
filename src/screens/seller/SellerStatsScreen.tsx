@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,8 +13,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
-import { getSellerOrders, getShopByOwner, getProductsByShop, getShopReviews } from '@/lib/dataService';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { getSellerOrders, getShopByOwner, getProductsByShop, getShopReviews, getTopViewedProducts } from '@/lib/dataService';
+import { PageLoader } from '@/components/ui/PageLoader';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import { formatFCFA, formatNumber } from '@/lib/format';
 import type { Order, OrderItem, Payment, ProductWithImages, Review } from '@/types/models';
 
@@ -29,6 +31,7 @@ export function SellerStatsScreen({ navigation }: SellerStatsScreenProps) {
   const [orders, setOrders] = useState<(Order & { items: OrderItem[]; payment?: Payment })[]>([]);
   const [products, setProducts] = useState<ProductWithImages[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [topViewed, setTopViewed] = useState<{ product_id: string; product_name: string; view_count: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('week');
 
@@ -40,18 +43,20 @@ export function SellerStatsScreen({ navigation }: SellerStatsScreenProps) {
       ]);
       setOrders(ords as any);
       if (shop) {
-        const [prods, revs] = await Promise.all([
+        const [prods, revs, viewed] = await Promise.all([
           getProductsByShop(shop.id),
           getShopReviews(shop.id),
+          getTopViewedProducts(shop.id, 5),
         ]);
         setProducts(prods);
         setReviews(revs);
+        setTopViewed(viewed);
       }
       setLoading(false);
     })();
   }, [profile]);
 
-  if (loading) return <SafeAreaView style={styles.container} edges={['top']}><LoadingSpinner /></SafeAreaView>;
+  if (loading) return <SafeAreaView style={styles.container} edges={['top']}><PageLoader /></SafeAreaView>;
 
   // Filtre commandes non annulées et non en attente
   const validOrders = orders.filter((o) => o.status !== 'cancelled' && o.status !== 'pending_payment');
@@ -82,17 +87,23 @@ export function SellerStatsScreen({ navigation }: SellerStatsScreenProps) {
         name: it.product?.name ?? 'Produit',
         qty: 0,
         revenue: 0,
-        views: Math.floor(Math.random() * 200) + 20,
+        views: 0,
       };
       existing.qty += it.quantity;
       existing.revenue += it.quantity * it.unit_price;
       productSales.set(it.product_id, existing);
     }
   }
-  // Produits vus (simulé)
+  // Produits vus (données réelles depuis la base)
   const productViews = new Map<string, { name: string; views: number }>();
   for (const p of products) {
-    productViews.set(p.id, { name: p.name, views: Math.floor(Math.random() * 500) + 30 });
+    productViews.set(p.id, { name: p.name, views: p.views_count ?? 0 });
+  }
+  // Compléter avec le topViewed récupéré séparément pour garantir les données
+  for (const tv of topViewed) {
+    if (!productViews.has(tv.product_id)) {
+      productViews.set(tv.product_id, { name: tv.product_name, views: tv.view_count });
+    }
   }
 
   const topBySales = [...productSales.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
@@ -132,9 +143,14 @@ export function SellerStatsScreen({ navigation }: SellerStatsScreenProps) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Feather name="bar-chart-2" size={24} color={colors.text} onPress={navigation.goBack} />
-        <Text style={styles.title}>Statistiques détaillées</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Statistiques détaillées</Text>
+          <StampBadge label="Stats" color={colors.primaryDeep} size="sm" />
+        </View>
         <View style={{ width: 24 }} />
       </View>
+      {/* Fil de Faso — couture signature */}
+      <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Sélecteur de période */}
@@ -306,7 +322,7 @@ export function SellerStatsScreen({ navigation }: SellerStatsScreenProps) {
   );
 }
 
-function KpiCard({
+const KpiCard = memo(function KpiCard({
   icon,
   label,
   value,
@@ -335,9 +351,9 @@ function KpiCard({
       <Text style={styles.kpiLabel}>{label}</Text>
     </View>
   );
-}
+});
 
-function StatusLine({
+const StatusLine = memo(function StatusLine({
   label,
   count,
   total,
@@ -358,7 +374,7 @@ function StatusLine({
       <Text style={styles.statusCount}>{count}</Text>
     </View>
   );
-}
+});
 
 function generateChartData(orders: Order[], period: Period) {
   const points: { label: string; value: number }[] = [];
@@ -428,12 +444,14 @@ function isSameDay(a: Date, b: Date) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.heading,
     fontWeight: typography.weights.bold,
     color: colors.text,
   },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   scroll: { padding: spacing.lg, paddingTop: 0, paddingBottom: spacing.xxxl },
   periodSelector: {
     flexDirection: 'row',

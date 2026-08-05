@@ -1,4 +1,8 @@
-import { useState } from 'react';
+// Input — champ signature « Fil de Faso ».
+// Au focus, un ThreadDivider vertical apparaît à gauche (le "fil" qui traverse
+// le champ), bordure passe de border → stitch, et coins pincés légers.
+// État error : bordure danger + fil danger.
+import { useState, memo } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,9 +15,10 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, radius, spacing } from '@/theme';
+import { ThreadDivider } from './ThreadDivider';
 
 interface InputProps {
-  label?: string;
+  label?: string | null;
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
@@ -26,10 +31,13 @@ interface InputProps {
   rightElement?: React.ReactNode;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoCorrect?: boolean;
+  accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
+  /** Si true, masque complètement l'espace réservé au label (sans margin-bottom 0). Pour intégration dans une rangée. */
+  hideTopLabel?: boolean;
 }
 
-export function Input({
+function InputComponent({
   label,
   value,
   onChangeText,
@@ -43,14 +51,18 @@ export function Input({
   rightElement,
   autoCapitalize,
   autoCorrect,
+  accessibilityLabel,
   style,
+  hideTopLabel = false,
 }: InputProps) {
   const [focused, setFocused] = useState(false);
   const [show, setShow] = useState(false);
   const isSecure = secureTextEntry;
 
+  const showThread = focused && !error;
+
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, hideTopLabel && { marginBottom: 0 }]}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <View
         style={[
@@ -61,8 +73,9 @@ export function Input({
           style,
         ]}
       >
+        {showThread ? <ThreadDivider variant="vertical" color={colors.stitchDeep} style={styles.thread} /> : null}
         {icon ? (
-          <Feather name={icon} size={18} color={colors.textMuted} style={styles.icon} />
+          <Feather name={icon} size={18} color={focused ? colors.primaryDeep : colors.textMuted} style={styles.icon} />
         ) : null}
         <TextInput
           value={value}
@@ -77,6 +90,7 @@ export function Input({
           numberOfLines={multiline ? numberOfLines : 1}
           autoCapitalize={autoCapitalize}
           autoCorrect={autoCorrect}
+          accessibilityLabel={accessibilityLabel ?? label ?? placeholder}
           style={styles.input}
         />
         {isSecure ? (
@@ -99,6 +113,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
     color: colors.text,
     marginBottom: spacing.xs,
+    letterSpacing: typography.letterSpacings.wide,
   },
   container: {
     flexDirection: 'row',
@@ -106,13 +121,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    // Coins pincés légers
+    borderTopLeftRadius: radius.md + 4,
+    borderTopRightRadius: radius.md,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md + 4,
     paddingHorizontal: spacing.md,
-    minHeight: 50,
+    minHeight: 52,
   },
-  focused: { borderColor: colors.primary },
+  focused: {
+    borderColor: colors.stitch,
+    backgroundColor: colors.surface,
+  },
   errorBorder: { borderColor: colors.danger },
   multiline: { alignItems: 'flex-start', paddingVertical: spacing.sm },
+  thread: {
+    marginLeft: -spacing.xs,
+    marginRight: spacing.xs - 2,
+  },
   icon: { marginRight: spacing.sm },
   input: {
     flex: 1,
@@ -129,3 +155,5 @@ const styles = StyleSheet.create({
     marginLeft: spacing.xs,
   },
 });
+
+export const Input = memo(InputComponent);

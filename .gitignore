@@ -31,6 +31,12 @@ yarn-error.*
 .env
 .env.local
 
+# —— Identifiants admin / secrets (JAMAIS dans Git) ——
+credentials.*.json
+credentials.json
+*.local.password
+
+
 # APK binaire volumineux (~77 Mo) — hébergé via Vercel (déploiement CLI),
 # pas dans git (trop lourd pour GitHub). Régénéré depuis EAS Build si besoin.
 public/download/*.apk

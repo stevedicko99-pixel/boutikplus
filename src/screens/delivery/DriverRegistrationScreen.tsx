@@ -27,7 +27,11 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import type { VehicleType } from '@/types/models';
+import { Image } from 'expo-image';
+import { pickAndCompressImage, uploadImage, type StorageBucket } from '@/lib/storage';
 
 interface DriverRegistrationScreenProps {
   navigation: {
@@ -52,6 +56,26 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
     licenseNumber: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [idCardFrontUri, setIdCardFrontUri] = useState<string | null>(null);
+  const [idCardBackUri, setIdCardBackUri] = useState<string | null>(null);
+  const [idFrontUploading, setIdFrontUploading] = useState(false);
+  const [idBackUploading, setIdBackUploading] = useState(false);
+
+  const uploadIdCard = async (side: 'front' | 'back', fromCamera: boolean) => {
+    const setUri = side === 'front' ? setIdCardFrontUri : setIdCardBackUri;
+    const setUploading = side === 'front' ? setIdFrontUploading : setIdBackUploading;
+    try {
+      setUploading(true);
+      const r = await pickAndCompressImage(fromCamera);
+      if (!r) return;
+      setUri(r.uri);
+      // Upload immédiat vers bucket privé (admin seul voit la pièce d'identité).
+      const up = await uploadImage('driver-id-cards' as StorageBucket, r.uri, `${profile?.id ?? 'demo'}_${side}_${Date.now()}`);
+      if (up) setUri(up.url);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Vérifier si l'utilisateur est déjà livreur
   useEffect(() => {
@@ -83,6 +107,9 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
     if (isNaN(maxWeight) || maxWeight <= 0) e.maxWeight = 'Poids invalide';
     if (!form.orangeMoneyNumber.trim() && !form.moovMoneyNumber.trim()) {
       e.mobileMoney = 'Au moins un numéro Mobile Money est requis';
+    }
+    if (!existingDriverId && (!idCardFrontUri || !idCardBackUri)) {
+      e.idCard = 'Les deux faces de la pièce d\'identité sont requises';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -150,11 +177,16 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
           <Pressable onPress={navigation.goBack} hitSlop={10}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </Pressable>
-          <Text style={styles.title}>
-            {existingDriverId ? 'Modifier mon profil' : 'Devenir livreur'}
-          </Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>
+              {existingDriverId ? 'Modifier mon profil' : 'Devenir livreur'}
+            </Text>
+            <StampBadge label="Livreur" color={colors.primaryDeep} size="sm" />
+          </View>
           <View style={{ width: 24 }} />
         </View>
+        {/* Fil de Faso — couture signature */}
+        <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Bannière d'intro */}
@@ -298,6 +330,37 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
             />
           </Card>
 
+          {/* Pièce d'identité — recto/verso */}
+          <Card>
+            <View style={styles.fieldLabelRow}>
+              <Text style={styles.fieldLabel}>Pièce d'identité (CNIB / Passport)</Text>
+              <StampBadge label="Requis" color={colors.danger} size="sm" />
+            </View>
+            <Text style={styles.fieldHint}>
+              Photos nettes, 4 coins visibles, aucun masque sur le visage. Les documents sont
+              chiffrés et visibles UNIQUEMENT par l'équipe de modération Boutikplus.
+            </Text>
+            <View style={{gap: spacing.md, marginTop: spacing.sm}}>
+              <IdCardField
+                label="Recto de la pièce"
+                uri={idCardFrontUri}
+                uploading={idFrontUploading}
+                onPick={() => uploadIdCard('front', false)}
+                onCamera={() => uploadIdCard('front', true)}
+                onReset={() => setIdCardFrontUri(null)}
+              />
+              <IdCardField
+                label="Verso de la pièce"
+                uri={idCardBackUri}
+                uploading={idBackUploading}
+                onPick={() => uploadIdCard('back', false)}
+                onCamera={() => uploadIdCard('back', true)}
+                onReset={() => setIdCardBackUri(null)}
+              />
+            </View>
+            {errors.idCard ? <Text style={styles.errorText}>{errors.idCard}</Text> : null}
+          </Card>
+
           <View style={{ height: spacing.xxl }} />
         </ScrollView>
 
@@ -315,6 +378,135 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
   );
 }
 
+// ——————————————————————————————————————————————————————————————
+// Sous-composant : champ upload photo recto/verso CNI
+// ——————————————————————————————————————————————————————————————
+function IdCardField({
+  label,
+  uri,
+  uploading,
+  onPick,
+  onCamera,
+  onReset,
+}: {
+  label: string;
+  uri: string | null;
+  uploading: boolean;
+  onPick: () => void;
+  onCamera: () => void;
+  onReset: () => void;
+}) {
+  if (uri) {
+    return (
+      <View style={idStyles.wrap}>
+        <Text style={idStyles.label}>{label}</Text>
+        <View style={idStyles.previewWrap}>
+          <Image source={{ uri }} style={idStyles.preview} contentFit="cover" />
+          <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm }}>
+            <Pressable style={[idStyles.miniBtn, { borderColor: colors.primary }]} onPress={onCamera}>
+              <Feather name="camera" size={14} color={colors.primary} />
+              <Text style={[idStyles.miniBtnText, { color: colors.primary }]}>Reprendre</Text>
+            </Pressable>
+            <Pressable style={[idStyles.miniBtn, { borderColor: colors.danger }]} onPress={onReset}>
+              <Feather name="trash-2" size={14} color={colors.danger} />
+              <Text style={[idStyles.miniBtnText, { color: colors.danger }]}>Supprimer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={idStyles.wrap}>
+      <Text style={idStyles.label}>{label}</Text>
+      <Pressable style={idStyles.empty} onPress={onPick} disabled={uploading}>
+        <Feather name="image" size={28} color={colors.textMuted} />
+        <Text style={idStyles.emptyText}>
+          {uploading ? 'Traitement…' : 'Appuyer pour ajouter une photo'}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+          <Pressable style={idStyles.actionBtn} onPress={onPick} disabled={uploading}>
+            <Feather name="image" size={14} color={colors.primary} />
+            <Text style={idStyles.actionBtnText}>Galerie</Text>
+          </Pressable>
+          <Pressable style={idStyles.actionBtn} onPress={onCamera} disabled={uploading}>
+            <Feather name="camera" size={14} color={colors.primary} />
+            <Text style={idStyles.actionBtnText}>Caméra</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+const idStyles = StyleSheet.create({
+  wrap: { width: '100%' },
+  label: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.medium,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  empty: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  emptyText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.textMuted,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.primary + '50',
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary + '10',
+  },
+  actionBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.primary,
+    fontWeight: typography.weights.medium,
+  },
+  previewWrap: {
+    width: '100%',
+  },
+  preview: {
+    width: '100%',
+    height: 160,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+  },
+  miniBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+  },
+  miniBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    fontWeight: typography.weights.medium,
+  },
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
@@ -323,6 +515,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.lg,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   title: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.heading,
@@ -358,6 +552,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
     color: colors.text,
     marginBottom: spacing.sm,
+  },
+  fieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
   },
   fieldHint: {
     fontFamily: typography.fontFamily,

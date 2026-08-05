@@ -68,11 +68,11 @@ export function ChatScreen({ navigation, route }: ChatScreenProps) {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={navigation.goBack} hitSlop={10}>
+        <Pressable onPress={navigation.goBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retour">
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
         <Image
-          source={{ uri: shop?.logo_url || 'https://placehold.co/80x80/FF6B00/FFFFFF?text=B' }}
+          source={{ uri: shop?.logo_url || 'https://dummyimage.com/80x80/FF6B00/FFFFFF&text=B' }}
           style={styles.headerAvatar}
           contentFit="cover"
         />
@@ -84,42 +84,61 @@ export function ChatScreen({ navigation, route }: ChatScreenProps) {
           </View>
         </View>
         {shop ? (
-          <Pressable onPress={() => navigation.navigate('ShopDetail', { shopId: shop.id })}>
+          <Pressable onPress={() => navigation.navigate('ShopDetail', { shopId: shop.id })} accessibilityRole="button" accessibilityLabel={`Voir la boutique ${shop.name}`}>
             <Text style={styles.shopLink}>Voir boutique</Text>
           </Pressable>
         ) : null}
       </View>
 
-      <FlatList
-        ref={flatRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.msgList}
-        onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: true })}
-        renderItem={({ item, index }) => {
-          const isMe = item.sender_id === profile?.id;
-          const showDate = index === 0 || isNewDay(messages[index - 1].created_at, item.created_at);
-          return (
-            <View>
-              {showDate ? <Text style={styles.dateSep}>{formatRelativeDate(item.created_at)}</Text> : null}
-              <View style={[styles.msgRow, isMe ? styles.msgRowMe : styles.msgRowThem]}>
-                <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-                  {item.image_url ? (
-                    <Image source={{ uri: item.image_url }} style={styles.msgImage} contentFit="cover" />
-                  ) : null}
-                  {item.content ? (
-                    <Text style={[styles.msgText, isMe ? styles.msgTextMe : styles.msgTextThem]}>{item.content}</Text>
-                  ) : null}
+      {messages.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <View style={styles.emptyIcon}>
+            <Feather name="message-circle" size={40} color={colors.primary} />
+          </View>
+          <Text style={styles.emptyTitle}>Aucun message pour l'instant</Text>
+          <Text style={styles.emptySub}>
+            {shop ? `Écrivez votre premier message à ${shop.name} pour discuter d'un produit.` : 'Posez votre première question au vendeur pour démarrer la discussion.'}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.8 }]}
+            onPress={() => navigation.navigate('Home')}
+          >
+            <Feather name="shopping-bag" size={16} color={colors.textInverse} />
+            <Text style={styles.emptyCtaText}>Parcourir les boutiques</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          ref={flatRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.msgList}
+          onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: true })}
+          renderItem={({ item, index }) => {
+            const isMe = item.sender_id === profile?.id;
+            const showDate = index === 0 || isNewDay(messages[index - 1].created_at, item.created_at);
+            return (
+              <View>
+                {showDate ? <Text style={styles.dateSep}>{formatRelativeDate(item.created_at)}</Text> : null}
+                <View style={[styles.msgRow, isMe ? styles.msgRowMe : styles.msgRowThem]}>
+                  <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                    {item.image_url ? (
+                      <Image source={{ uri: item.image_url }} style={styles.msgImage} contentFit="cover" />
+                    ) : null}
+                    {item.content ? (
+                      <Text style={[styles.msgText, isMe ? styles.msgTextMe : styles.msgTextThem]}>{item.content}</Text>
+                    ) : null}
+                  </View>
                 </View>
               </View>
-            </View>
-          );
-        }}
-      />
+            );
+          }}
+        />
+      )}
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.inputBar}>
-          <Pressable style={styles.attachBtn} hitSlop={8}>
+          <Pressable style={styles.attachBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel="Joindre une image">
             <Feather name="image" size={22} color={colors.textMuted} />
           </Pressable>
           <TextInput
@@ -134,6 +153,8 @@ export function ChatScreen({ navigation, route }: ChatScreenProps) {
             style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
             onPress={handleSend}
             disabled={!input.trim() || sending}
+            accessibilityRole="button"
+            accessibilityLabel="Envoyer le message"
           >
             <Feather name="send" size={18} color={colors.textInverse} />
           </Pressable>
@@ -157,6 +178,12 @@ const styles = StyleSheet.create({
   statusText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.success },
   shopLink: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.primary, fontWeight: typography.weights.semibold },
   msgList: { padding: spacing.lg, paddingBottom: spacing.xl },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg, gap: spacing.sm },
+  emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primary + '12', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
+  emptyTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, textAlign: 'center' },
+  emptySub: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, color: colors.textMuted, textAlign: 'center', lineHeight: 22 },
+  emptyCta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.primary, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, borderRadius: radius.pill, marginTop: spacing.sm },
+  emptyCtaText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.textInverse },
   dateSep: { textAlign: 'center', fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginVertical: spacing.md },
   msgRow: { flexDirection: 'row', marginBottom: spacing.sm },
   msgRowMe: { justifyContent: 'flex-end' },

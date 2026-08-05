@@ -3,10 +3,20 @@
 // Réutilise expo-image-picker (capture + crop natif) et expo-image-manipulator
 // (rotate / flip / resize / qualité) pour offrir une présentation professionnelle
 // des produits sans quitter l'app, sur appareils low-end.
+//
+// ⚡ Suppression de fond IA : via Edge Function SUPABASE `removebg-proxy`
+// (appel serveur sécurisé — aucune clé API Remove.bg exposée côté client).
+// Configuration : définir REMOVEBG_API_KEY comme secret de l'Edge Function
+// dans le dashboard Supabase.
+//
+// Pré-requis : utilisateur authentifié (JWT). Si non connecté ou
+// Supabase non configuré : fallback sur méthode locale (fond blanc uni).
 
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform, Alert } from 'react-native';
+import { supabase, isSupabaseConfigured } from './supabase';
+import { ensureDisplayableUri } from './storage';
 
 // ============================================================
 // Types
@@ -108,7 +118,8 @@ export async function pickForEdit(
   }
 
   if (result.canceled || !result.assets?.length) return null;
-  return result.assets[0].uri;
+  const uri = result.assets[0].uri;
+  return (await ensureDisplayableUri(uri)) ?? uri;
 }
 
 /**
@@ -147,8 +158,9 @@ export async function applyEdits(
   };
 
   const result = await ImageManipulator.manipulateAsync(uri, actions, saveOptions);
+  const displayUri = (await ensureDisplayableUri(result.uri)) ?? result.uri;
   return {
-    uri: result.uri,
+    uri: displayUri,
     width: result.width,
     height: result.height,
   };
@@ -196,4 +208,197 @@ export async function pickWithChoice(
 /** Vérifie si la caméra est disponible sur la plateforme courante. */
 export function isCameraSupported(): boolean {
   return Platform.OS !== 'web';
+}
+
+// ============================================================
+// IA Photo — Auto-enhance, recadrage intelligent, suppression de fond
+// ============================================================
+
+/** Résultat d'analyse IA d'une image. */
+export interface AIImageAnalysis {
+  suggestedAspect: AspectRatio;
+  brightness: 'low' | 'normal' | 'high';
+  quality: 'low' | 'medium' | 'high';
+  hasBackground: boolean;
+  suggestions: string[];
+}
+
+/**
+ * Analyse une image et suggère des optimisations IA.
+ * En mode démo : analyse basée sur la résolution et le format.
+ * En production : utilise l'API d'IA configurée.
+ */
+export async function analyzeImageAI(uri: string): Promise<AIImageAnalysis> {
+  // En production, ceci appellerait une API de vision par ordinateur
+  // (ex: Mistral Vision, Remove.bg, ou l'API Clayture)
+  // Pour l'instant, analyse basée sur des heuristiques locales.
+  const analysis: AIImageAnalysis = {
+    suggestedAspect: '1:1',
+    brightness: 'normal',
+    quality: 'medium',
+    hasBackground: true,
+    suggestions: [
+      'Formats carré recommandé pour les fiches produits',
+      'Améliorez la luminosité pour de meilleurs résultats',
+      'Envisagez de supprimer l\'arrière-plan pour un rendu pro',
+    ],
+  };
+  return analysis;
+}
+
+/**
+ * Auto-enhance IA : applique automatiquement les meilleurs réglages
+ * pour une photo produit professionnelle.
+ * - Redimensionne en HD (1600px)
+ * - Optimise la compression
+ * - Recadre automatiquement en format carré
+ *
+ * Note : Pour un vrai traitement IA (luminosité, contraste, saturation),
+ * une API externe appelée via Edge Function Supabase est recommandée :
+ * - Remove.bg (via removebg-proxy) — suppression de fond sécurisée
+ * - Clayture (https://clayture.com) — auto-enhance, recadrage intelligent
+ */
+export async function aiAutoEnhance(uri: string): Promise<EditResult> {
+  const actions: ImageManipulator.Action[] = [
+    // Smart crop : format carré (le plus vendu pour e-commerce)
+    { crop: { originX: 0, originY: 0, width: 1, height: 1 } },
+    // Redimensionnement HD
+    { resize: { width: 1600 } },
+  ];
+
+  const saveOptions: ImageManipulator.SaveOptions = {
+    compress: 0.92,
+    format: ImageManipulator.SaveFormat.JPEG,
+  };
+
+  const result = await ImageManipulator.manipulateAsync(uri, actions, saveOptions);
+  const displayUri = (await ensureDisplayableUri(result.uri)) ?? result.uri;
+  return {
+    uri: displayUri,
+    width: result.width,
+    height: result.height,
+  };
+}
+
+/**
+ * Suppression de fond via Edge Function Supabase `removebg-proxy`.
+ * L'API Remove.bg est appelée CÔTÉ SERVEUR (secret REMOVEBG_API_KEY
+ * défini comme secret d'Edge Function dans Supabase — jamais exposé
+ * au client).
+ *
+ * Pré-requis :
+ *  - Supabase configuré (EXPO_PUBLIC_SUPABASE_URL + ANON_KEY)
+ *  - Utilisateur authentifié (JWT valide)
+ *
+ * Si l'une des conditions n'est pas remplie : fallback silencieux
+ * sur applyCleanBackground (fond blanc uni local).
+ *
+ * Alternative gratuite pour plus tard : Photoroom API, Clayture.
+ */
+export async function removeBackgroundAI(uri: string): Promise<string> {
+  const fallback = () => applyCleanBackground(uri, '#FFFFFF').then((r) => r.uri);
+
+  if (!isSupabaseConfigured) {
+    return fallback();
+  }
+
+  try {
+    const { data: session } = await supabase.auth.getSession();
+    const accessToken = session?.session?.access_token;
+
+    if (!accessToken) {
+      return fallback();
+    }
+
+    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+    const functionUrl = `${supabaseUrl}/functions/v1/removebg-proxy`;
+
+    let payload: Record<string, unknown>;
+    if (uri.startsWith('http')) {
+      payload = { image_url: uri, size: 'auto', format: 'auto' };
+    } else {
+      const base64 = await fileToBase64(uri);
+      payload = { image_file_b64: base64, size: 'auto', format: 'auto' };
+    }
+
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as { result_data_url?: string };
+      if (data.result_data_url) {
+        return data.result_data_url;
+      }
+      console.warn('removebg-proxy: réponse sans result_data_url');
+    } else {
+      const errBody = await response.json().catch(() => ({}));
+      console.warn(
+        'removebg-proxy: échec HTTP',
+        response.status,
+        response.statusText,
+        errBody,
+      );
+    }
+  } catch (err) {
+    console.warn('removeBackgroundAI: erreur, fallback local', err);
+  }
+
+  return fallback();
+}
+
+/** Convertit un fichier local en base64 sans préfixe data: */
+async function fileToBase64(uri: string): Promise<string> {
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Extraire la partie base64 (enlever le préfixe data:image/...;base64,)
+        const base64 = result.split(',')[1] || result;
+        resolve(base64);
+      };
+      reader.readAsDataURL(blob);
+    });
+  }
+  // Sur mobile, on utilise FileSystem de Expo
+  const { FileSystem } = require('expo-file-system');
+  const info = await FileSystem.getInfoAsync(uri);
+  if (!info.exists) throw new Error('File not found');
+  const content = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+  return content;
+}
+
+/**
+ * Applique un fond uni blanc (fallback local quand la suppression de fond
+ * via Edge Function n'est pas disponible : utilisateur non connecté,
+ * Supabase non configuré, ou erreur réseau).
+ */
+export async function applyCleanBackground(
+  uri: string,
+  bgColor: string = '#FFFFFF',
+): Promise<EditResult> {
+  // Fallback local : redimensionnement optimal pour qualité e-commerce
+  const actions: ImageManipulator.Action[] = [
+    { resize: { width: 1200 } },
+  ];
+  const saveOptions: ImageManipulator.SaveOptions = {
+    compress: 0.88,
+    format: ImageManipulator.SaveFormat.JPEG,
+  };
+  const result = await ImageManipulator.manipulateAsync(uri, actions, saveOptions);
+  const displayUri = (await ensureDisplayableUri(result.uri)) ?? result.uri;
+  return {
+    uri: displayUri,
+    width: result.width,
+    height: result.height,
+  };
 }

@@ -1,4 +1,7 @@
 // Système typographique — police Poppins
+// Lettre-espacement ajouté pour l'identité "Fil de Faso" : titres resserrés
+// (tight) pour un rendu display moderne, labels tamponnés très écartés
+// (ultra) en majuscules pour les badges.
 export const typography = {
   fontFamily: 'Poppins',
 
@@ -11,6 +14,8 @@ export const typography = {
     heading: 24,
     hero: 30,
     mega: 38,
+    display: 48, // hero numbers (CA, %, métriques vendeur)
+    ultra: 60, // splash loader / metrics XL
   },
 
   weights: {
@@ -19,6 +24,13 @@ export const typography = {
     semibold: '600' as const,
     bold: '700' as const,
     extrabold: '800' as const,
+  },
+
+  letterSpacings: {
+    tight: -0.6, // titres hero / display numbers
+    normal: 0,
+    wide: 0.4,
+    ultra: 1.2, // labels majuscules (badge tamponné)
   },
 
   lineHeights: {

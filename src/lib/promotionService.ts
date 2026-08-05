@@ -38,7 +38,7 @@ let demoCampaignEvents: CampaignEvent[] = [...DEMO_CAMPAIGN_EVENTS];
 let demoPromotions: Promotion[] = [...DEMO_PROMOTIONS];
 
 // Domaine publique pour les liens de partage (configurable via env à terme)
-const PUBLIC_BASE_URL = 'https://boutikplus.app';
+const PUBLIC_BASE_URL = 'https://boutikplus.vercel.app';
 
 // ============================================================
 // Helpers purs

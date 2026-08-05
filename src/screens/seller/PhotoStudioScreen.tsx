@@ -12,6 +12,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,9 +23,14 @@ import {
   pickWithChoice,
   applyEdits,
   DEFAULT_EDIT_OPTIONS,
+  aiAutoEnhance,
+  analyzeImageAI,
+  removeBackgroundAI,
   type AspectRatio,
   type EditOptions,
+  type AIImageAnalysis,
 } from '@/lib/photoStudio';
+import { setPhotoResult } from '@/lib/photoResultHolder';
 
 interface PhotoStudioScreenProps {
   navigation: {
@@ -59,12 +65,15 @@ export function PhotoStudioScreen({ navigation, route }: PhotoStudioScreenProps)
     aspect: route?.params?.aspect ?? '1:1',
   });
   const [applying, setApplying] = useState(false);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<AIImageAnalysis | null>(null);
 
   // Si pas d'URI initiale, on lance immédiatement le choix de source.
   const promptPick = useCallback(async () => {
     const uri = await pickWithChoice(editOpts.aspect);
-    if (uri) setSourceUri(uri);
-    else if (!initialUri) {
+    if (uri) {
+      setSourceUri(uri);
+    } else if (!initialUri) {
       // Annulation au premier écran : retour arrière.
       navigation.goBack();
     }
@@ -103,13 +112,74 @@ export function PhotoStudioScreen({ navigation, route }: PhotoStudioScreenProps)
     setApplying(true);
     try {
       const result = await applyEdits(sourceUri, editOpts);
-      // Passe le résultat à l'écran appelant via params de navigation.
-      navigation.navigate(returnTo, {
-        editedImageUri: result.uri,
+      if (!result?.uri) {
+        throw new Error('applyEdits returned an empty URI');
+      }
+      // ✅ Utilise le holder singleton + goBack() au lieu de navigation.navigate(returnTo, params).
+      // Cause racine du bug : navigation.navigate avec params créait une race condition
+      // avec le cleanup des params dans AddEditProduct, et Alert.alert est un no-op sur web.
+      // Le holder garantit le transfert de données sur toutes les plateformes.
+      setPhotoResult({
+        editedUri: result.uri,
         editIndex,
       });
+      navigation.goBack();
+    } catch (e: any) {
+      // Logging explicite (Alert.alert est un no-op sur web)
+      console.error('[PhotoStudio] applyEdits error:', e?.message ?? e);
+      const title = 'Erreur de traitement';
+      const message = "Impossible de traiter l'image. Réessayez.\n" + (e?.message ?? '');
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(`${title}\n\n${message}`);
+      } else {
+        Alert.alert(title, message);
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleAIAnalyze = async () => {
+    if (!sourceUri) return;
+    setAiAnalyzing(true);
+    try {
+      const analysis = await analyzeImageAI(sourceUri);
+      setAiAnalysis(analysis);
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+  const handleAIAutoEnhance = async () => {
+    if (!sourceUri) return;
+    setApplying(true);
+    try {
+      const result = await aiAutoEnhance(sourceUri);
+      setSourceUri(result.uri);
+      // Reset crop after auto-enhance
+      setEditOpts((o) => ({ ...o, aspect: '1:1', hd: true }));
     } catch (e) {
-      Alert.alert('Erreur', "Impossible de traiter l'image. Réessayez.");
+      Alert.alert('Erreur', "Amélioration IA impossible. Réessayez.");
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleAIRemoveBg = async () => {
+    if (!sourceUri) return;
+    setApplying(true);
+    try {
+      const result = await removeBackgroundAI(sourceUri);
+      if (result !== sourceUri) {
+        setSourceUri(result);
+      } else {
+        Alert.alert(
+          'Information',
+          'La suppression de fond nécessite une API externe (Remove.bg). La photo a été optimisée sans suppression de fond.',
+        );
+      }
+    } catch (e) {
+      Alert.alert('Erreur', "Suppression de fond impossible.");
     } finally {
       setApplying(false);
     }
@@ -232,6 +302,52 @@ export function PhotoStudioScreen({ navigation, route }: PhotoStudioScreenProps)
               onPress={handlePickAgain}
             />
           </View>
+
+           {/* Section IA */}
+          <Text style={styles.sectionLabel}>✨ Studio IA</Text>
+          <View style={styles.aiGrid}>
+            <Pressable
+              style={[styles.aiBtn, styles.aiBtnPrimary]}
+              onPress={handleAIAutoEnhance}
+              disabled={applying}
+            >
+              <Feather name="zap" size={22} color={colors.textInverse} />
+              <Text style={styles.aiBtnTextPrimary}>Auto-enhance</Text>
+              <Text style={styles.aiBtnSubText}>Optimisation pro</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.aiBtn, styles.aiBtnSecondary]}
+              onPress={handleAIRemoveBg}
+              disabled={applying}
+            >
+              <Feather name="scissors" size={22} color={colors.primary} />
+              <Text style={styles.aiBtnText}>Supprimer fond</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.aiBtn, styles.aiBtnTertiary]}
+              onPress={handleAIAnalyze}
+              disabled={aiAnalyzing}
+            >
+              <Feather name="cpu" size={22} color={colors.secondary} />
+              <Text style={styles.aiBtnText}>Analyser</Text>
+              <Text style={styles.aiBtnSubText}>Conseils IA</Text>
+            </Pressable>
+          </View>
+
+          {aiAnalysis ? (
+            <View style={styles.analysisBox}>
+              <Text style={styles.analysisTitle}>🔍 Analyse IA</Text>
+              <Text style={styles.analysisRow}>
+                Format recommandé : <Text style={styles.analysisValue}>{aiAnalysis.suggestedAspect}</Text>
+              </Text>
+              <Text style={styles.analysisRow}>
+                Luminosité : <Text style={styles.analysisValue}>{aiAnalysis.brightness === 'low' ? 'Basse' : aiAnalysis.brightness === 'high' ? 'Élevée' : 'Normale'}</Text>
+              </Text>
+              {aiAnalysis.suggestions.map((s, i) => (
+                <Text key={i} style={styles.analysisSuggestion}>• {s}</Text>
+              ))}
+            </View>
+          ) : null}
 
           <View style={styles.tipBox}>
             <Feather name="info" size={14} color={colors.info} />
@@ -430,6 +546,80 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.caption,
     color: colors.text,
     lineHeight: 18,
+  },
+  aiGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  aiBtn: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  aiBtnPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  aiBtnSecondary: {
+    backgroundColor: colors.primary + '10',
+    borderColor: colors.primary + '40',
+  },
+  aiBtnTertiary: {
+    backgroundColor: colors.secondary + '10',
+    borderColor: colors.secondary + '40',
+  },
+  aiBtnTextPrimary: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: typography.weights.bold,
+    color: colors.textInverse,
+  },
+  aiBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+  },
+  aiBtnSubText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 9,
+    color: colors.textMuted,
+  },
+  analysisBox: {
+    backgroundColor: colors.secondary + '10',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.secondary + '30',
+  },
+  analysisTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.bold,
+    color: colors.secondary,
+    marginBottom: spacing.sm,
+  },
+  analysisRow: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.text,
+    marginBottom: 2,
+  },
+  analysisValue: {
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
+  },
+  analysisSuggestion: {
+    fontFamily: typography.fontFamily,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 });
 

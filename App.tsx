@@ -5,29 +5,49 @@ import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { ConnectivityProvider } from '@/context/ConnectivityContext';
+import { FavoriteProvider } from '@/context/FavoriteContext';
+import { AccessibilityProvider } from '@/context/AccessibilityContext';
+import { ToastProvider } from '@/context/ToastContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { colors } from '@/theme';
 import { StyleSheet } from 'react-native';
+import { useEffect } from 'react';
+import { setupForegroundNotificationHandler } from '@/lib/pushNotificationService';
 
 export default function App() {
+  // Configure le handler de notifications push au premier-plan.
+  // Sans ça, les notifications ne s'affichent pas tant que l'app est ouverte.
+  useEffect(() => {
+    setupForegroundNotificationHandler();
+  }, []);
+
   return (
-    <ErrorBoundary>
-      <GestureHandlerRootView style={styles.root}>
-        <SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <ErrorBoundary>
           <AuthProvider>
             <NotificationProvider>
               <ConnectivityProvider>
-                <CartProvider>
-                  <StatusBar style="dark" />
-                  <RootNavigator />
-                </CartProvider>
+                <FavoriteProvider>
+                  <CartProvider>
+                    <AccessibilityProvider>
+                      <ThemeProvider>
+                        <ToastProvider>
+                          <StatusBar style="dark" />
+                          <RootNavigator />
+                        </ToastProvider>
+                      </ThemeProvider>
+                    </AccessibilityProvider>
+                  </CartProvider>
+                </FavoriteProvider>
               </ConnectivityProvider>
             </NotificationProvider>
           </AuthProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </ErrorBoundary>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -13,9 +13,19 @@ export interface Database {
           full_name: string;
           phone: string;
           city: string | null;
-          role: 'buyer' | 'seller' | 'admin';
+          role: 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
+          /** Tableau des rôles de l'utilisateur (V4 — un user peut cumuler acheteur + vendeur + livreur). */
+          roles: string[];
+          /** Rôle actif après connexion (V4). Détermine le tableau de bord affiché. */
+          primary_role: 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
           avatar_url: string | null;
           push_token: string | null;
+          is_verified: boolean;
+          verified_at: string | null;
+          verification_method: string | null;
+          social_links: Record<string, unknown>;
+          bio: string | null;
+          updated_at: string;
           created_at: string;
         };
         Insert: {
@@ -23,9 +33,17 @@ export interface Database {
           full_name: string;
           phone: string;
           city?: string | null;
-          role?: 'buyer' | 'seller' | 'admin';
+          role?: 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
+          roles?: string[];
+          primary_role?: 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
           avatar_url?: string | null;
           push_token?: string | null;
+          is_verified?: boolean;
+          verified_at?: string | null;
+          verification_method?: string | null;
+          social_links?: Record<string, unknown>;
+          bio?: string | null;
+          updated_at?: string;
         };
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
         Relationships: [];
@@ -47,10 +65,17 @@ export interface Database {
           owner_id: string;
           name: string;
           description: string | null;
+          slogan: string | null;
           logo_url: string | null;
           banner_url: string | null;
           category_id: string;
           city: string;
+          address: string | null;
+          phone_number: string | null;
+          whatsapp_number: string | null;
+          email: string | null;
+          opening_hours: import('@/types/models').ShopOpeningHours | null;
+          social_links: import('@/types/models').ShopSocialLinks | null;
           orange_money_number: string | null;
           moov_money_number: string | null;
           status: 'active' | 'paused' | 'pending';
@@ -60,10 +85,17 @@ export interface Database {
           owner_id: string;
           name: string;
           description?: string | null;
+          slogan?: string | null;
           logo_url?: string | null;
           banner_url?: string | null;
           category_id: string;
           city: string;
+          address?: string | null;
+          phone_number?: string | null;
+          whatsapp_number?: string | null;
+          email?: string | null;
+          opening_hours?: import('@/types/models').ShopOpeningHours | null;
+          social_links?: import('@/types/models').ShopSocialLinks | null;
           orange_money_number?: string | null;
           moov_money_number?: string | null;
           status?: 'active' | 'paused' | 'pending';
@@ -95,6 +127,8 @@ export interface Database {
           price: number;
           category_id: string;
           stock: number;
+          favorites_count: number;
+          views_count: number;
           status: 'available' | 'out_of_stock';
           created_at: string;
         };
@@ -105,6 +139,8 @@ export interface Database {
           price: number;
           category_id: string;
           stock: number;
+          favorites_count?: number;
+          views_count?: number;
           status?: 'available' | 'out_of_stock';
         };
         Update: Partial<Database['public']['Tables']['products']['Insert']>;
@@ -229,6 +265,8 @@ export interface Database {
             | 'cancelled'
             | 'refunded';
           cancellation_reason: string | null;
+          driver_offer_price: number | null;
+          price_set_by: 'seller' | 'driver';
           created_at: string;
           updated_at: string;
           accepted_at: string | null;
@@ -258,12 +296,16 @@ export interface Database {
             | 'cancelled'
             | 'refunded';
           cancellation_reason?: string | null;
+          driver_offer_price?: number | null;
+          price_set_by?: 'seller' | 'driver';
         };
         Update: Partial<Database['public']['Tables']['delivery_requests']['Insert']> & {
           // Champs gérés durant le cycle de vie (non présents dans Insert)
           accepted_at?: string | null;
           delivered_at?: string | null;
           updated_at?: string;
+          driver_offer_price?: number | null;
+          price_set_by?: 'seller' | 'driver';
         };
         Relationships: [
           {
@@ -818,6 +860,10 @@ export interface Database {
           product_id: string | null;
           rating: number;
           comment: string | null;
+          likes_count: number;
+          seller_reply: string | null;
+          seller_replied_at: string | null;
+          is_anonymous: boolean;
           created_at: string;
         };
         Insert: {
@@ -826,6 +872,10 @@ export interface Database {
           product_id?: string | null;
           rating: number;
           comment?: string | null;
+          likes_count?: number;
+          seller_reply?: string | null;
+          seller_replied_at?: string | null;
+          is_anonymous?: boolean;
           created_at?: string;
         };
         Update: Partial<Database['public']['Tables']['reviews']['Insert']>;
@@ -957,6 +1007,88 @@ export interface Database {
           },
         ];
       };
+      favorites: {
+        Row: {
+          id: string;
+          user_id: string;
+          product_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          product_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['favorites']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'favorites_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'favorites_product_id_fkey';
+            columns: ['product_id'];
+            isOneToOne: false;
+            referencedRelation: 'products';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      review_images: {
+        Row: {
+          id: string;
+          review_id: string;
+          image_url: string;
+          position: number;
+        };
+        Insert: {
+          review_id: string;
+          image_url: string;
+          position?: number;
+        };
+        Update: Partial<Database['public']['Tables']['review_images']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'review_images_review_id_fkey';
+            columns: ['review_id'];
+            isOneToOne: false;
+            referencedRelation: 'reviews';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      review_likes: {
+        Row: {
+          review_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          review_id: string;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['review_likes']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'review_likes_review_id_fkey';
+            columns: ['review_id'];
+            isOneToOne: false;
+            referencedRelation: 'reviews';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'review_likes_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       reports: {
         Row: {
           id: string;
@@ -1063,9 +1195,76 @@ export interface Database {
         Args: { p_conversation_id: string; p_user_id: string };
         Returns: undefined;
       };
+      promote_self_to_admin: {
+        Args: { p_verification_key: string };
+        Returns: {
+          success: boolean;
+          message: string;
+          new_role: string | null;
+        };
+      };
+      get_ownership_status: {
+        Args: Record<string, never>;
+        Returns: {
+          caller_id: string;
+          caller_role: string;
+          caller_full_name: string | null;
+          total_admins: number;
+          total_users: number;
+        };
+      };
+      toggle_favorite: {
+        Args: { p_product_id: string };
+        Returns: { added: boolean; new_total: number };
+      };
+      get_product_review_stats: {
+        Args: { p_product_id: string };
+        Returns: {
+          total_reviews: number;
+          avg_rating: number;
+          stars_1: number;
+          stars_2: number;
+          stars_3: number;
+          stars_4: number;
+          stars_5: number;
+        };
+      };
+      add_verification_method: {
+        Args: { p_method: string; p_value: string };
+        Returns: { success: boolean; message: string; is_verified_now: boolean };
+      };
+      // ─── V4 : multi-rôles (acheteur + vendeur + livreur) ───
+      switch_primary_role: {
+        Args: { p_new_role: string };
+        Returns: string; // retourne le nouveau primary_role (cast en UserRole côté client)
+      };
+      // ─── V5 : le livreur fixe son prix à l'acceptation ───
+      accept_delivery_with_price: {
+        Args: {
+          p_delivery_id: string;
+          p_driver_user_id: string;
+          p_driver_price: number;
+        };
+        Returns: {
+          id: string;
+          price: number;
+          driver_offer_price: number;
+          price_set_by: string;
+          status: string;
+        };
+      };
+      // ─── V6 : comptage de vues produits ───
+      increment_product_view: {
+        Args: { p_product_id: string };
+        Returns: void;
+      };
+      get_top_viewed_products: {
+        Args: { p_shop_id: string; p_limit?: number };
+        Returns: { product_id: string; product_name: string; view_count: number }[];
+      };
     };
     Enums: {
-      user_role: 'buyer' | 'seller' | 'admin';
+      user_role: 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
       shop_status: 'active' | 'paused' | 'pending';
       product_status: 'available' | 'out_of_stock';
       order_status:

@@ -19,6 +19,12 @@ import { ProfileScreen } from '@/screens/profile/ProfileScreen';
 import { OrdersScreen } from '@/screens/profile/OrdersScreen';
 import { AddressesScreen } from '@/screens/profile/AddressesScreen';
 import { SettingsScreen } from '@/screens/profile/SettingsScreen';
+import { AboutScreen } from '@/screens/profile/AboutScreen';
+import { WishlistScreen } from '@/screens/profile/WishlistScreen';
+import { ProductReviewsScreen } from '@/screens/product/ProductReviewsScreen';
+import { WriteProductReviewScreen } from '@/screens/product/WriteProductReviewScreen';
+import { ProfileVerificationScreen } from '@/screens/profile/ProfileVerificationScreen';
+import { OwnershipVerificationScreen } from '@/screens/admin/OwnershipVerificationScreen';
 import { CreateShopScreen } from '@/screens/seller/CreateShopScreen';
 import { SellerDashboardScreen } from '@/screens/seller/SellerDashboardScreen';
 import { ProductManagementScreen } from '@/screens/seller/ProductManagementScreen';
@@ -34,6 +40,9 @@ import { ReportsScreen } from '@/screens/admin/ReportsScreen';
 import { NotificationCenterScreen } from '@/screens/notifications/NotificationCenterScreen';
 import { ChatbotScreen } from '@/screens/ai/ChatbotScreen';
 import { AIProductAssistantScreen } from '@/screens/ai/AIProductAssistantScreen';
+import { AIGlobalDashboardScreen } from '@/screens/ai/AIGlobalDashboardScreen';
+import { AILightningPushScreen } from '@/screens/ai/AILightningPushScreen';
+import { SmartContentScreen } from '@/screens/ai/SmartContentScreen';
 import { ShareableShopScreen } from '@/screens/growth/ShareableShopScreen';
 import { ReferralProgramScreen } from '@/screens/growth/ReferralProgramScreen';
 import { ShareLinkManagementScreen } from '@/screens/growth/ShareLinkManagementScreen';
@@ -49,8 +58,11 @@ import { HelpCenterScreen } from '@/screens/help/HelpCenterScreen';
 import { HelpTutorialScreen } from '@/screens/help/HelpTutorialScreen';
 import { PhotoStudioScreen } from '@/screens/seller/PhotoStudioScreen';
 import { ProductVideoPickerScreen } from '@/screens/seller/ProductVideoPickerScreen';
+import { TermsScreen } from '@/screens/legal/TermsScreen';
+import { PrivacyScreen } from '@/screens/legal/PrivacyScreen';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AspectRatio } from '@/lib/photoStudio';
+import type { PaymentOperatorId } from '@/types/models';
 
 // --- Types ---
 export type AppStackParamList = {
@@ -62,7 +74,7 @@ export type AppStackParamList = {
   ProductDetail: { productId: string };
   Cart: undefined;
   Checkout: undefined;
-  Payment: { orderId: string };
+  Payment: { orderId: string; amount?: number; operator?: PaymentOperatorId; shopId?: string };
   OrderConfirmation: { orderId: string };
   ConversationList: undefined;
   Chat: { conversationId: string; shopId?: string; productId?: string };
@@ -70,6 +82,8 @@ export type AppStackParamList = {
   Orders: undefined;
   Addresses: undefined;
   Settings: undefined;
+  About: undefined;
+  OwnershipVerification: undefined;
   CreateShop: undefined;
   SellerDashboard: undefined;
   ProductManagement: undefined;
@@ -85,6 +99,9 @@ export type AppStackParamList = {
   NotificationCenter: undefined;
   Chatbot: { product?: any; shopName?: string };
   AIProductAssistant: undefined;
+  AIGlobalDashboard: undefined;
+  AILightningPush: undefined;
+  SmartContent: undefined;
   // Croissance
   ShareableShop: { shopId: string; shopName: string; shopLogo?: string };
   ReferralProgram: undefined;
@@ -103,6 +120,16 @@ export type AppStackParamList = {
   ProductVideoPicker: { productId?: string; returnTo?: 'AddEditProduct' } | undefined;
   HelpCenter: undefined;
   HelpTutorial: { tutorialId: string };
+  // Rétention & attraction
+  Wishlist: undefined;
+  // Avis produits
+  ProductReviews: { productId: string };
+  WriteProductReview: { productId: string; orderId?: string };
+  // Vérification utilisateur
+  ProfileVerification: undefined;
+  // Légal
+  Terms: undefined;
+  Privacy: undefined;
 };
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>;
@@ -166,11 +193,20 @@ export function AppNavigator() {
       <Stack.Screen name="Orders" component={OrdersScreen} />
       <Stack.Screen name="Addresses" component={AddressesScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="Wishlist" component={WishlistScreen} />
+      <Stack.Screen name="ProductReviews" component={ProductReviewsScreen} />
+      <Stack.Screen name="WriteProductReview" component={WriteProductReviewScreen} />
+      <Stack.Screen name="ProfileVerification" component={ProfileVerificationScreen} />
+      <Stack.Screen name="OwnershipVerification" component={OwnershipVerificationScreen} />
 
       {/* Notifications & IA */}
       <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} />
       <Stack.Screen name="Chatbot" component={ChatbotScreen} />
       <Stack.Screen name="AIProductAssistant" component={AIProductAssistantScreen} />
+      <Stack.Screen name="AIGlobalDashboard" component={AIGlobalDashboardScreen} />
+      <Stack.Screen name="AILightningPush" component={AILightningPushScreen} />
+      <Stack.Screen name="SmartContent" component={SmartContentScreen} />
 
       {/* Croissance */}
       <Stack.Screen name="ShareableShop" component={ShareableShopScreen} />
@@ -208,10 +244,15 @@ export function AppNavigator() {
       <Stack.Screen name="ProductVideoPicker" component={ProductVideoPickerScreen} />
       <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />
       <Stack.Screen name="HelpTutorial" component={HelpTutorialScreen} />
+      {/* Légal */}
+      <Stack.Screen name="Terms" component={TermsScreen} />
+      <Stack.Screen name="Privacy" component={PrivacyScreen} />
     </Stack.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
+  // L'écran tab a un padding bas pour ne pas être masqué par la BottomTabBar
+  // flottante Pinduoduo (barre surélevée avec ombre, ~72px de haut + safe area).
   tabScreen: { flex: 1, backgroundColor: colors.background },
 });

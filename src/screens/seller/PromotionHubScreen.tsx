@@ -12,6 +12,8 @@ import {
   type ShopPromotionKpi,
 } from '@/lib/promotionService';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import type { Shop } from '@/types/models';
 
 interface PromotionHubScreenProps {
@@ -230,7 +232,10 @@ function Header({
         <Feather name="arrow-left" size={24} color={colors.text} />
       </Pressable>
       <View style={{ flex: 1, marginLeft: spacing.md }}>
-        <Text style={styles.title}>{title}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>{title}</Text>
+          {shopName ? <StampBadge label="Promo" color={colors.primaryDeep} size="sm" /> : null}
+        </View>
         {shopName ? (
           <Text style={styles.subtitle} numberOfLines={1}>
             {shopName}
@@ -299,12 +304,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.lg,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.heading,
     fontWeight: typography.weights.bold,
     color: colors.text,
   },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   subtitle: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.caption,

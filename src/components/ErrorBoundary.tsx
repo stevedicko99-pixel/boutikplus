@@ -9,6 +9,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { logger } from '@/lib/logger';
+// __BTIK_ERR_FP3__ : Empreinte de propriété DICKO Christ Steve
+// Égale STEG_MARKERS[3].value dans src/lib/ownership.ts
+export const __BTIK_ERR_FP3__ = 'df14d69d266b0ceb8d73e4075a956549';
 
 interface Props {
   children: ReactNode;

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Boutikplus",
     "slug": "boutikplus",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "boutikplus",
@@ -28,7 +28,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.boutikplus.app",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "Boutikplus a besoin de votre appareil photo pour prendre des photos de produits et des preuves de paiement.",
         "NSPhotoLibraryUsageDescription": "Boutikplus a besoin d'accéder à vos photos pour ajouter des produits et des preuves de paiement.",
@@ -50,10 +50,10 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FF6B00"
+        "backgroundColor": "#FF8A5C"
       },
       "package": "com.boutikplus.app",
-      "versionCode": 1,
+      "versionCode": 3,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -89,11 +89,31 @@
       "name": "Boutikplus",
       "shortName": "Boutikplus",
       "lang": "fr",
-      "themeColor": "#FF6B00",
-      "backgroundColor": "#FFFFFF"
+      "themeColor": "#FF8A5C",
+        "backgroundColor": "#FFF8F2",
+      "meta": {
+        "og:type": "website",
+        "og:title": "Boutikplus — Marketplace des jeunes vendeurs du Faso",
+        "og:description": "Créez votre boutique en ligne, partagez vos produits sur WhatsApp, TikTok et Snapchat. Gérérez vos commandes et développez votre business.",
+        "og:image": "/og-image-1200x630.png",
+        "og:url": "https://boutikplus.vercel.app",
+        "og:site_name": "Boutikplus",
+        "twitter:card": "summary_large_image",
+        "twitter:title": "Boutikplus — Marketplace des jeunes vendeurs",
+        "twitter:description": "Vendez en ligne facilement. Partagez, gérez, développez votre boutique.",
+        "twitter:image": "/og-image-1200x630.png"
+      }
     },
     "plugins": [
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FF6B00",
+          "mode": "production"
+        }
+      ],
       [
         "expo-image-picker",
         {

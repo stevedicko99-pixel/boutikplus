@@ -9,7 +9,9 @@
 -- 1. Auto-génération du slug pour share_links (si non fourni)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.generate_share_slug()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
 DECLARE
   base TEXT;
   candidate TEXT;
@@ -45,7 +47,7 @@ BEGIN
   NEW.slug := candidate;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS share_links_generate_slug ON share_links;
 CREATE TRIGGER share_links_generate_slug
@@ -57,7 +59,9 @@ CREATE TRIGGER share_links_generate_slug
 --    d'une commande (sur INSERT dans order_items)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.decrement_stock_on_order()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
 DECLARE
   ordered_qty INT;
   current_stock INT;
@@ -82,7 +86,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS order_items_decrement_stock ON order_items;
 CREATE TRIGGER order_items_decrement_stock
@@ -93,7 +97,9 @@ CREATE TRIGGER order_items_decrement_stock
 -- 3. Remise en stock si commande annulée (sur UPDATE de orders)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.restore_stock_on_cancel()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
 BEGIN
   -- Si le statut passe à 'cancelled' et qu'il ne l'était pas avant
   IF NEW.status = 'cancelled' AND OLD.status <> 'cancelled' THEN
@@ -108,7 +114,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS orders_restore_stock ON orders;
 CREATE TRIGGER orders_restore_stock
@@ -120,7 +126,9 @@ CREATE TRIGGER orders_restore_stock
 --    du livreur lorsqu'un avis est déposé (delivery_reviews)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.update_driver_rating()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
 DECLARE
   drv_user_id UUID;
   avg_rating NUMERIC;
@@ -145,7 +153,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS delivery_reviews_update_rating ON delivery_reviews;
 CREATE TRIGGER delivery_reviews_update_rating
@@ -156,7 +164,9 @@ CREATE TRIGGER delivery_reviews_update_rating
 -- 5. Notification automatique au destinataire d'un message
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.notify_new_message()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
 DECLARE
   recipient_id UUID;
   sender_name TEXT;
@@ -189,7 +199,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS messages_notify_recipient ON messages;
 CREATE TRIGGER messages_notify_recipient
@@ -201,7 +211,9 @@ CREATE TRIGGER messages_notify_recipient
 --    discount_codes lors d'une conversion (campaign_events)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.increment_discount_usage()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
 BEGIN
   -- Seulement sur un événement de conversion lié à un code promo
   IF NEW.event_type = 'conversion' AND NEW.discount_code_id IS NOT NULL THEN
@@ -215,7 +227,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS campaign_events_increment_usage ON campaign_events;
 CREATE TRIGGER campaign_events_increment_usage
@@ -227,7 +239,9 @@ CREATE TRIGGER campaign_events_increment_usage
 --    (views_count, clicks_count, conversions_count, revenue_total)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.update_share_link_counters()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
 BEGIN
   IF NEW.share_link_id IS NULL THEN
     RETURN NEW;
@@ -245,7 +259,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS campaign_events_update_counters ON campaign_events;
 CREATE TRIGGER campaign_events_update_counters

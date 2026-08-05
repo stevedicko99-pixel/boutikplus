@@ -21,7 +21,15 @@ export function DeliveryCard({ delivery, onPress }: DeliveryCardProps) {
     >
       <View style={styles.header}>
         <DeliveryStatusBadge status={delivery.status} size="md" />
-        <Text style={styles.price}>{formatFCFA(delivery.price)}</Text>
+        <View style={styles.priceWrap}>
+          {delivery.price_set_by === 'driver' && (
+            <View style={styles.driverPricedBadge}>
+              <Feather name="user-check" size={10} color={colors.surface} />
+              <Text style={styles.driverPricedText}>Prix livreur</Text>
+            </View>
+          )}
+          <Text style={styles.price}>{formatFCFA(delivery.price)}</Text>
+        </View>
       </View>
 
       <View style={styles.route}>
@@ -118,8 +126,28 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: spacing.md,
+  },
+  priceWrap: {
+    alignItems: 'flex-end',
+  },
+  driverPricedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.success,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+    marginBottom: 4,
+  },
+  driverPricedText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 9,
+    fontWeight: typography.weights.bold,
+    color: colors.surface,
+    textTransform: 'uppercase',
   },
   price: {
     fontFamily: typography.fontFamily,

@@ -6,6 +6,8 @@ import { colors, typography, spacing, radius } from '@/theme';
 import { useCart } from '@/context/CartContext';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import { formatFCFA } from '@/lib/format';
 import type { CartLine, CartSellerGroup } from '@/context/CartContext';
 
@@ -32,11 +34,16 @@ export function CartScreen({ navigation }: CartScreenProps) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Mon panier</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Mon panier</Text>
+          <StampBadge label="Panier" color={colors.secondaryDeep} size="sm" />
+        </View>
         <Pressable onPress={clear} hitSlop={10}>
           <Text style={styles.clearBtn}>Vider</Text>
         </Pressable>
       </View>
+      {/* Fil de Faso — couture sous le titre */}
+      <ThreadDivider color={colors.stitch} style={styles.cartThread} />
       <FlatList
         data={sellerGroups}
         keyExtractor={(item) => item.sellerId}
@@ -124,8 +131,10 @@ function CartLineItem({ line, onQty, onRemove }: { line: CartLine; onQty: (id: s
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, paddingBottom: spacing.sm },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
+  cartThread: { alignSelf: 'center', marginBottom: spacing.sm },
   clearBtn: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.danger, fontWeight: typography.weights.semibold },
   list: { padding: spacing.lg, paddingTop: 0 },
   groupCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.borderLight },

@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /cart
+Disallow: /checkout
+Disallow: /dashboard
+Disallow: /seller
+Disallow: /profile
+
+Sitemap: https://boutikplus.vercel.app/sitemap.xml
+# Alternative sitemap served via Edge Function
+# Sitemap: https://[PROJECT-REF].supabase.co/functions/v1/sitemap

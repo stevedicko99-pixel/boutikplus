@@ -10,22 +10,25 @@ import { PaymentProofUpload } from '@/components/payment/PaymentProofUpload';
 import { OPERATOR_LIST, PAYMENT_OPERATORS, type PaymentOperatorId } from '@/constants/payment';
 import { getBuyerOrders, getShop, uploadPaymentProof } from '@/lib/dataService';
 import { formatFCFA } from '@/lib/format';
-import { pickAndCompressImage, uploadImage, type StorageBucket } from '@/lib/storage';
+import { uploadImage, type StorageBucket } from '@/lib/storage';
+import { ImageUploader, type UploadedImage } from '@/components/upload/ImageUploader';
 import { notifyProofUploaded } from '@/lib/notifications';
 import { friendlyMessage } from '@/lib/errorMessages';
+import { useToast } from '@/context/ToastContext';
 import type { Shop, Order } from '@/types/models';
 
 interface PaymentScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
-  route: { params: { orderId: string } };
+  route: { params: { orderId: string; amount?: number; operator?: PaymentOperatorId; shopId?: string } };
 }
 
 export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
-  const { orderId } = route.params;
+  const { orderId, amount: fallbackAmount, operator: fallbackOperator, shopId: fallbackShopId } = route.params;
+  const toast = useToast();
   const [order, setOrder] = useState<(Order & { shop?: Shop }) | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
-  const [operator, setOperator] = useState<PaymentOperatorId | null>(null);
-  const [proofUri, setProofUri] = useState<string | null>(null);
+  const [operator, setOperator] = useState<PaymentOperatorId | null>(fallbackOperator ?? null);
+  const [proofImages, setProofImages] = useState<UploadedImage[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -41,49 +44,78 @@ export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
           setShop(s);
           if (s?.orange_money_number) setOperator('orange_money');
           else if (s?.moov_money_number) setOperator('moov_money');
+          else if (s?.coris_money_number) setOperator('coris_money');
+          else if (s?.wave_number) setOperator('wave');
         }
+      } else if (fallbackShopId) {
+        // Commande fraîchement créée (démo) : on reconstruit le contexte
+        // à partir des params passés par CheckoutScreen.
+        const s = await getShop(fallbackShopId);
+        setShop(s);
+        if (s?.orange_money_number) setOperator('orange_money');
+        else if (s?.moov_money_number) setOperator('moov_money');
+        else if (s?.coris_money_number) setOperator('coris_money');
+        else if (s?.wave_number) setOperator('wave');
+        // Construit un ordre minimal pour l'affichage du montant.
+        setOrder({
+          id: orderId,
+          buyer_id: 'demo-buyer',
+          seller_id: s?.owner_id ?? 'demo-seller',
+          total_amount: fallbackAmount ?? 0,
+          delivery_address_id: null,
+          status: 'pending_payment',
+          note: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          shop: s ?? undefined,
+        });
       }
     })();
-  }, [orderId]);
+  }, [orderId, fallbackAmount, fallbackShopId]);
 
-  const handlePickImage = async (fromCamera: boolean) => {
-    const result = await pickAndCompressImage(fromCamera);
-    if (result) setProofUri(result.uri);
-  };
+  const proofUri = proofImages[0]?.uri ?? null;
+  const proofUploading = proofImages.some((img) => img.isUploading);
 
   const handleSubmit = async () => {
     if (!operator || !order || !shop) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un opérateur');
+      toast.warning('Opérateur requis', 'Veuillez sélectionner un opérateur de paiement');
       return;
     }
-    const mmNumber = operator === 'orange_money' ? shop.orange_money_number : shop.moov_money_number;
+    const mmNumber = operator === 'orange_money' ? shop.orange_money_number
+      : operator === 'moov_money' ? shop.moov_money_number
+      : operator === 'coris_money' ? shop.coris_money_number
+      : shop.wave_number;
     if (!mmNumber) {
-      Alert.alert('Erreur', 'Le vendeur n\'a pas de numéro pour cet opérateur');
+      toast.error('Opérateur indisponible', 'Le vendeur n\'a pas configuré de numéro pour cet opérateur');
       return;
     }
     if (!proofUri) {
-      Alert.alert('Erreur', 'Veuillez téléverser la capture d\'écran du paiement');
+      toast.warning('Preuve requise', 'Veuillez téléverser la capture d\'écran du paiement');
+      return;
+    }
+    if (proofUploading) {
+      toast.warning('Téléversement en cours', 'Veuillez attendre la fin de l\'envoi de la preuve');
       return;
     }
     setSubmitting(true);
-    let proofUrl = proofUri;
-    // En mode réel, on téléverse vers Supabase Storage
-    const uploaded = await uploadImage('payment-proofs' as StorageBucket, proofUri, `proof_${orderId}`);
-    if (uploaded) proofUrl = uploaded.url;
+    const proofUrl = proofImages[0]?.url ?? proofUri;
     const { error } = await uploadPaymentProof(order.id, order.total_amount, operator, proofUrl);
     setSubmitting(false);
     if (error) {
-      Alert.alert('Paiement impossible', friendlyMessage(error));
+      toast.error('Échec de l\'envoi', friendlyMessage(error));
       return;
     }
-    // Déclencher notification au vendeur
+    toast.success('Preuve envoyée', 'Le vendeur va valider votre paiement sous peu');
     await notifyProofUploaded(order.seller_id, order.id);
     navigation.navigate('OrderConfirmation', { orderId: order.id });
   };
 
   const availableOperators = OPERATOR_LIST.filter((op) => {
     if (op.id === 'orange_money') return Boolean(shop?.orange_money_number);
-    return Boolean(shop?.moov_money_number);
+    if (op.id === 'moov_money') return Boolean(shop?.moov_money_number);
+    if (op.id === 'coris_money') return Boolean(shop?.coris_money_number);
+    if (op.id === 'wave') return Boolean(shop?.wave_number);
+    return false;
   });
 
   return (
@@ -153,10 +185,14 @@ export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
               <View style={styles.stepNum}><Text style={styles.stepNumText}>3</Text></View>
               <Text style={styles.stepTitle}>Téléversez la preuve</Text>
             </View>
-            <PaymentProofUpload
-              imageUri={proofUri}
-              onPick={handlePickImage}
-              onClear={() => setProofUri(null)}
+            <ImageUploader
+              initialImages={proofImages}
+              maxImages={1}
+              bucket="payment-proofs"
+              filePrefix={`proof_${orderId}`}
+              addLabel="Capture du paiement"
+              aspectRatio={16 / 10}
+              onChange={setProofImages}
             />
             <Text style={styles.hint}>
               Le vendeur vérifiera votre capture et confirmera la réception du paiement.
@@ -191,6 +227,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   scroll: { padding: spacing.lg, paddingTop: 0, paddingBottom: 120 },
   amountCard: { alignItems: 'center', marginBottom: spacing.xl, backgroundColor: colors.primary },
   amountLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: 'rgba(255,255,255,0.85)' },

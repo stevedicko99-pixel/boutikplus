@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useNotifications, getNotificationIcon, getNotificationColor } from '@/context/NotificationContext';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { PageLoader } from '@/components/ui/PageLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatRelativeDate } from '@/lib/format';
 import type { AppNotification } from '@/types/models';
@@ -35,17 +35,25 @@ export function NotificationCenterScreen({ navigation }: NotificationCenterScree
       await markNotificationRead(notif.id);
     }
     // Navigation selon le type
-    if (notif.data?.deliveryId) {
+    if (notif.data?.conversationId) {
+      navigation.navigate('Chat', { conversationId: notif.data.conversationId as string });
+    } else if (notif.data?.deliveryId) {
       navigation.navigate('DeliveryTracking', { deliveryId: notif.data.deliveryId as string });
     } else if (notif.data?.orderId) {
       navigation.navigate('SellerOrders');
+    } else if (notif.data?.shopId) {
+      navigation.navigate('ShopDetail', { shopId: notif.data.shopId as string });
+    } else if (notif.data?.productId) {
+      navigation.navigate('ProductDetail', { productId: notif.data.productId as string });
+    } else if (notif.type === 'new_message') {
+      navigation.navigate('ConversationList');
     }
   };
 
   if (loading && notifications.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <LoadingSpinner />
+        <PageLoader />
       </SafeAreaView>
     );
   }

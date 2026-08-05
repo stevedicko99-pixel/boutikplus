@@ -23,7 +23,7 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- Helper : vérifier si l'utilisateur est admin
 CREATE OR REPLACE FUNCTION is_admin()
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN SET search_path = public AS $$
   SELECT EXISTS (
     SELECT 1 FROM profiles
     WHERE id = auth.uid() AND role = 'admin'
@@ -220,8 +220,9 @@ CREATE POLICY "messages_update_participant" ON messages FOR UPDATE USING (
   EXISTS (
     SELECT 1 FROM conversations
     WHERE conversations.id = messages.conversation_id
-    AND (conversations.buyer_id = auth.uid() OR conversations.seller_id = auth.uid())
+      AND (conversations.buyer_id = auth.uid() OR conversations.seller_id = auth.uid())
   )
+  AND auth.uid() = sender_id
 );
 
 -- ============================================================
@@ -235,6 +236,9 @@ CREATE POLICY "follows_delete_self" ON shop_follows FOR DELETE USING (auth.uid()
 -- reports
 -- ============================================================
 CREATE POLICY "reports_insert_self" ON reports FOR INSERT WITH CHECK (auth.uid() = reporter_id);
+CREATE POLICY "reports_select_self" ON reports FOR SELECT USING (
+  reporter_id = auth.uid() OR is_admin()
+);
 CREATE POLICY "reports_admin_all" ON reports FOR ALL USING (is_admin());
 
 -- ============================================================

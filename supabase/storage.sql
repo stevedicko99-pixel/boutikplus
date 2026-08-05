@@ -10,9 +10,11 @@
 -- 4 buckets publics en lecture (les images doivent être accessibles publiquement)
 INSERT INTO storage.buckets (id, name, public) VALUES
   ('shop-logos', 'shop-logos', true),
+  ('shop-covers', 'shop-covers', true),
   ('product-images', 'product-images', true),
   ('payment-proofs', 'payment-proofs', true),
-  ('delivery-proofs', 'delivery-proofs', true)
+  ('delivery-proofs', 'delivery-proofs', true),
+  ('driver-id-cards', 'driver-id-cards', false) -- privé : pièces d'identité, admin seul
 ON CONFLICT (id) DO NOTHING;
 
 -- Bucket pour les vidéos produit (upload natif, public en lecture)
@@ -47,6 +49,68 @@ CREATE POLICY "shop_logos_update_owner" ON storage.objects FOR UPDATE
 CREATE POLICY "shop_logos_delete_owner" ON storage.objects FOR DELETE
   USING (
     bucket_id = 'shop-logos'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- ============================================================
+-- shop-covers : bannières/couvertures de boutique (public read, owner write)
+-- ============================================================
+CREATE POLICY "shop_covers_read" ON storage.objects FOR SELECT
+  USING (bucket_id = 'shop-covers');
+
+CREATE POLICY "shop_covers_insert_owner" ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'shop-covers'
+    AND auth.role() = 'authenticated'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "shop_covers_update_owner" ON storage.objects FOR UPDATE
+  USING (
+    bucket_id = 'shop-covers'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "shop_covers_delete_owner" ON storage.objects FOR DELETE
+  USING (
+    bucket_id = 'shop-covers'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- ============================================================
+-- driver-id-cards : pièces d'identité livreurs (PRIVÉ — admin seul en lecture)
+-- ============================================================
+CREATE POLICY "driver_id_cards_read_admin" ON storage.objects FOR SELECT
+  USING (
+    bucket_id = 'driver-id-cards'
+    AND (
+      -- Le propriétaire peut lire ses propres documents
+      (storage.foldername(name))[1] = auth.uid()::text
+      -- Les admins peuvent lire tous les documents
+      OR EXISTS (
+        SELECT 1 FROM profiles
+        WHERE id = auth.uid()
+        AND 'admin' = ANY(roles)
+      )
+    )
+  );
+
+CREATE POLICY "driver_id_cards_insert_owner" ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'driver-id-cards'
+    AND auth.role() = 'authenticated'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "driver_id_cards_update_owner" ON storage.objects FOR UPDATE
+  USING (
+    bucket_id = 'driver-id-cards'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "driver_id_cards_delete_owner" ON storage.objects FOR DELETE
+  USING (
+    bucket_id = 'driver-id-cards'
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 

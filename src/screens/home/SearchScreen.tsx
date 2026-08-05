@@ -1,15 +1,25 @@
 import { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, ScrollView } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { MasonryFlashList } from '@shopify/flash-list';
 import { colors, typography, spacing, radius } from '@/theme';
 import { CATEGORIES } from '@/constants/categories';
 import { CITY_LIST } from '@/constants/cities';
 import { getProducts } from '@/lib/dataService';
 import { ProductCard } from '@/components/product/ProductCard';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { SkeletonProductGrid } from '@/components/ui/Skeleton';
 import { Input } from '@/components/ui/Input';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import type { ProductWithImages } from '@/types/models';
 
 interface SearchScreenProps {
@@ -18,6 +28,7 @@ interface SearchScreenProps {
 }
 
 export function SearchScreen({ navigation, route }: SearchScreenProps) {
+  useDocumentTitle('Recherche — Boutikplus');
   const [query, setQuery] = useState(route?.params?.query ?? '');
   const [categoryId, setCategoryId] = useState<string | null>(route?.params?.categoryId ?? null);
   const [city, setCity] = useState<string | null>(route?.params?.city ?? null);
@@ -47,7 +58,7 @@ export function SearchScreen({ navigation, route }: SearchScreenProps) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.searchRow}>
-        <Pressable onPress={navigation.goBack} hitSlop={10}>
+        <Pressable onPress={navigation.goBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retour">
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -56,9 +67,10 @@ export function SearchScreen({ navigation, route }: SearchScreenProps) {
             onChangeText={setQuery}
             placeholder="Rechercher..."
             icon="search"
+            accessibilityLabel="Champ de recherche"
           />
         </View>
-        <Pressable style={styles.filterBtn} onPress={() => setShowFilters((s) => !s)}>
+        <Pressable style={styles.filterBtn} onPress={() => setShowFilters((s) => !s)} accessibilityRole="button" accessibilityLabel="Filtres" accessibilityHint="Afficher ou masquer les filtres de recherche">
           <Feather name="sliders" size={20} color={colors.primary} />
         </Pressable>
       </View>
@@ -90,20 +102,28 @@ export function SearchScreen({ navigation, route }: SearchScreenProps) {
         </View>
       ) : null}
 
+      {/* Fil de Faso — couture sous la recherche */}
+      <ThreadDivider color={colors.stitch} style={styles.searchThread} />
+
       <View style={styles.resultInfo}>
         <Text style={styles.resultCount}>{results.length} résultat{results.length > 1 ? 's' : ''}</Text>
+        {!loading && results.length > 0 ? (
+          <StampBadge label="Trouvé" color={colors.primaryDeep} size="sm" />
+        ) : null}
       </View>
 
       {loading ? (
-        <LoadingSpinner />
+        <SkeletonProductGrid count={6} />
       ) : results.length === 0 ? (
         <EmptyState icon="search" title="Aucun résultat" message="Essayez d'autres mots-clés ou modifiez les filtres" />
       ) : (
-        <FlatList
+        <MasonryFlashList<ProductWithImages>
           data={results}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          columnWrapperStyle={styles.gridRow}
+          estimatedItemSize={250}
+          drawDistance={256}
+          onEndReachedThreshold={0.4}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <View style={styles.gridItem}>
@@ -118,7 +138,13 @@ export function SearchScreen({ navigation, route }: SearchScreenProps) {
 
 function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <Pressable style={[styles.filterChip, active && styles.filterChipActive]} onPress={onPress}>
+    <Pressable
+      style={[styles.filterChip, active && styles.filterChipActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`Filtrer par ${label}`}
+    >
       <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -130,11 +156,11 @@ const styles = StyleSheet.create({
   filterBtn: { width: 46, height: 46, borderRadius: radius.md, backgroundColor: '#FFF0E0', alignItems: 'center', justifyContent: 'center' },
   filtersPanel: { backgroundColor: colors.surface, marginHorizontal: spacing.lg, marginBottom: spacing.md, padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderLight },
   filterTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text, marginBottom: spacing.sm },
-  resultInfo: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  searchThread: { alignSelf: 'center', marginBottom: spacing.xs },
+  resultInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   resultCount: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted },
-  gridRow: { gap: spacing.md, paddingHorizontal: spacing.lg },
-  gridItem: { flex: 1, maxWidth: '50%' },
-  listContent: { paddingBottom: 100 },
+  gridItem: { width: '100%' },
+  listContent: { padding: spacing.lg, paddingTop: 0, paddingBottom: 100 },
   filterChip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterChipText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.text },

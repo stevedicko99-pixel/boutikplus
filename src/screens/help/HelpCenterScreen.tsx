@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { Input } from '@/components/ui/Input';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import { FaqAccordion } from '@/components/help/FaqAccordion';
 import {
   HELP_FAQ_SECTIONS,
@@ -43,9 +45,14 @@ export function HelpCenterScreen({ navigation }: HelpCenterScreenProps) {
         <Pressable onPress={navigation.goBack} hitSlop={10}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>Aide & support</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Aide & support</Text>
+          <StampBadge label="Aide" color={colors.primaryDeep} size="sm" />
+        </View>
         <View style={{ width: 24 }} />
       </View>
+      {/* Fil de Faso — couture signature */}
+      <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -123,6 +130,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.lg,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   title: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.heading,

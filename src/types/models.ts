@@ -1,8 +1,9 @@
 // Types de domaine — Boutikplus
+// Multi-rôles : un utilisateur peut cumuler plusieurs casquettes
+// (acheteur + vendeur + livreur). Admin et super_admin restent des rôles de confiance.
+export type UserRole = 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
 
-export type UserRole = 'buyer' | 'seller' | 'admin';
-
-export type ShopStatus = 'active' | 'paused' | 'pending';
+export type ShopStatus = 'active' | 'paused' | 'pending' | 'rejected';
 
 export type ProductStatus = 'available' | 'out_of_stock';
 
@@ -15,7 +16,7 @@ export type OrderStatus =
   | 'delivered' // Livrée
   | 'cancelled'; // Annulée
 
-export type PaymentOperatorId = 'orange_money' | 'moov_money';
+export type PaymentOperatorId = 'orange_money' | 'moov_money' | 'coris_money' | 'wave';
 
 export type PaymentStatus = 'pending' | 'validated' | 'rejected';
 
@@ -32,8 +33,19 @@ export interface Profile {
   full_name: string;
   phone: string;
   city: string | null;
+  /** @deprecated Utiliser primary_role (ou roles[0] pour multi-rôles). Conservé pour compatibilité ascendante. */
   role: UserRole;
+  /** Tableau de tous les rôles possédés par l'utilisateur (ex: ['buyer', 'seller', 'driver']). */
+  roles?: UserRole[];
+  /** Rôle actif / principal (celui utilisé pour la navigation et les droits). */
+  primary_role?: UserRole;
   avatar_url: string | null;
+  is_verified?: boolean;
+  verified_at?: string | null;
+  verification_method?: string | null;
+  social_links?: Record<string, unknown> | null;
+  bio?: string | null;
+  updated_at?: string;
   created_at: string;
 }
 
@@ -44,17 +56,56 @@ export interface Category {
   sort_order: number;
 }
 
+// Horaires d'ouverture d'une journée (format "HH:MM").
+export interface DayHours {
+  open: string;
+  close: string;
+  closed?: boolean;
+}
+
+// Horaires d'ouverture par jour de la semaine.
+// Clés ISO : lun=mon, mar=tue, mer=wed, jeu=thu, ven=fri, sam=sat, dim=sun.
+export type ShopOpeningHours = {
+  mon?: DayHours;
+  tue?: DayHours;
+  wed?: DayHours;
+  thu?: DayHours;
+  fri?: DayHours;
+  sat?: DayHours;
+  sun?: DayHours;
+};
+
+// Réseaux sociaux d'une boutique (handles ou URLs).
+export interface ShopSocialLinks {
+  instagram?: string;
+  tiktok?: string;
+  facebook?: string;
+  snapchat?: string;
+}
+
 export interface Shop {
   id: string;
   owner_id: string;
   name: string;
   description: string | null;
+  slogan: string | null;
   logo_url: string | null;
   banner_url: string | null;
   category_id: string;
   city: string;
+  address: string | null;
+  phone_number: string | null;
+  whatsapp_number: string | null;
+  email: string | null;
+  opening_hours: ShopOpeningHours | null;
+  social_links: ShopSocialLinks | null;
   orange_money_number: string | null;
   moov_money_number: string | null;
+  coris_money_number: string | null;
+  wave_number: string | null;
+  is_verified?: boolean;
+  verified_at?: string | null;
+  rejection_reason?: string | null;
   status: ShopStatus;
   created_at: string;
 }
@@ -67,6 +118,8 @@ export interface Product {
   price: number;
   category_id: string;
   stock: number;
+  favorites_count: number;
+  views_count: number;
   status: ProductStatus;
   created_at: string;
 }
@@ -298,6 +351,8 @@ export interface DriverProfile {
   max_weight: number; // poids max en kg
   orange_money_number: string | null;
   moov_money_number: string | null;
+  coris_money_number?: string | null;
+  wave_number?: string | null;
   current_lat: number | null;
   current_lng: number | null;
   license_number: string | null;
@@ -321,10 +376,14 @@ export interface DeliveryRequest {
   preferred_date: string; // ISO date
   preferred_time: string; // créneau "08:00 - 10:00"
   description: string | null;
-  price: number; // montant total en FCFA
+  price: number; // montant total en FCFA (devient le prix fixé par le livreur à l'acceptation)
   distance_km: number;
   status: DeliveryStatus;
   cancellation_reason: string | null;
+  /** Prix proposé par le livreur à l'acceptation (null tant qu'il n'a pas fait son offre). */
+  driver_offer_price?: number | null;
+  /** Qui a fixé le prix final : 'seller' (estimation initiale) | 'driver' (livreur a fixé son tarif). */
+  price_set_by?: 'seller' | 'driver';
   created_at: string;
   updated_at: string;
   accepted_at: string | null;

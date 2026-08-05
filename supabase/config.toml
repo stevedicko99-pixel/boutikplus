@@ -54,10 +54,8 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:8081"
-additional_redirect_urls = ["https://boutikplus.app://", "boutikplus://"]
+additional_redirect_urls = ["https://boutikplus.vercel.app", "boutikplus://"]
 jwt_expiry = 3600
-refresh_token_rotation_enabled = true
-refresh_token_reuse_interval = 10
 enable_signup = true
 enable_anonymous_sign_ins = false
 
@@ -92,3 +90,12 @@ verify_jwt = true
 
 [functions.cleanup-expired-data]
 verify_jwt = false  # tâche planifiée (cron)
+
+[functions.mistral-proxy]
+verify_jwt = true   # utilisateur authentifié requis pour appeler Mistral
+
+[functions.removebg-proxy]
+verify_jwt = true   # utilisateur authentifié requis pour Remove.bg
+
+[functions.sitemap]
+verify_jwt = false  # sitemap public pour les moteurs de recherche (SEO)

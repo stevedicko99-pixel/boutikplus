@@ -23,6 +23,7 @@ import {
 } from '@/lib/promotionService';
 import { QRCodeView } from '@/components/promotion/QRCodeView';
 import { openExternalLink } from '@/lib/safeLinking';
+import { shopPublicUrl } from '@/constants/config';
 import type { ShareLink } from '@/types/models';
 
 interface ShareableShopScreenProps {
@@ -81,7 +82,9 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
     ensureShareLink();
   }, [ensureShareLink]);
 
-  const shareUrl = activeLink?.target_url ?? `https://boutikplus.app/s/shop-${shopId}`;
+  // URL publique deep-linkable : ouvre directement la page boutique,
+  // même pour un visiteur non connecté (config linking dans RootNavigator).
+  const shareUrl = activeLink?.target_url ?? shopPublicUrl(shopId);
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(shareUrl);

@@ -7,6 +7,10 @@ import {
   Pressable,
   RefreshControl,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -20,7 +24,7 @@ import {
   getDriverDeliveryHistory,
   getDriverStats,
   setDriverAvailability,
-  acceptDelivery,
+  acceptDeliveryWithPrice,
   formatFCFA,
   type DriverStats,
 } from '@/lib/deliveryService';
@@ -28,6 +32,8 @@ import { DeliveryCard } from '@/components/delivery';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import type { DriverProfile, DeliveryRequest } from '@/types/models';
 
 interface DriverDashboardScreenProps {
@@ -47,6 +53,14 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('available');
   const [toggling, setToggling] = useState(false);
+
+  // 💰 Modal "Fixer mon prix" : c'est le LIVREUR qui détermine son tarif à l'acceptation
+  const [priceModal, setPriceModal] = useState<{
+    visible: boolean;
+    delivery: DeliveryRequest | null;
+    priceInput: string;
+    submitting: boolean;
+  }>({ visible: false, delivery: null, priceInput: '', submitting: false });
 
   const userId = profile?.id ?? 'demo-seller';
 
@@ -85,21 +99,42 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
     setDriver({ ...driver, is_available: !driver.is_available });
   };
 
+  // 💰 Ouvre la modal pour que le LIVREUR fixe SON prix avant d'accepter
   const handleAccept = (delivery: DeliveryRequest) => {
+    // Pré-remplir avec l'estimation vendeur comme suggestion de départ
+    setPriceModal({
+      visible: true,
+      delivery,
+      priceInput: String(delivery.price ?? 0),
+      submitting: false,
+    });
+  };
+
+  const closePriceModal = () => {
+    if (priceModal.submitting) return; // ne pas fermer pendant l'envoi
+    setPriceModal((m) => ({ ...m, visible: false, delivery: null, priceInput: '' }));
+  };
+
+  const confirmAcceptWithPrice = async () => {
+    const delivery = priceModal.delivery;
+    if (!delivery) return;
+    const driverPrice = parseInt(priceModal.priceInput.replace(/\D/g, ''), 10);
+    if (!driverPrice || driverPrice <= 0) {
+      Alert.alert('Prix invalide', 'Saisis un montant en FCFA supérieur à 0.');
+      return;
+    }
+    setPriceModal((m) => ({ ...m, submitting: true }));
+    const { error } = await acceptDeliveryWithPrice(delivery.id, userId, driverPrice);
+    setPriceModal((m) => ({ ...m, submitting: false }));
+    if (error) {
+      Alert.alert('Erreur', friendlyMessage(error));
+      return;
+    }
+    setPriceModal({ visible: false, delivery: null, priceInput: '', submitting: false });
     Alert.alert(
-      'Accepter cette livraison ?',
-      `Vous recevrez ${formatFCFA(delivery.price)} pour cette course de ${delivery.pickup_city} → ${delivery.destination_city}.`,
-      [
-        { text: 'Annuler' },
-        {
-          text: 'Accepter',
-          onPress: async () => {
-            const { error } = await acceptDelivery(delivery.id, userId);
-            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
-            await load();
-          },
-        },
-      ],
+      'Livraison acceptée 🎉',
+      `Tu as fixé ton tarif à ${formatFCFA(driverPrice)} pour cette course.\nLe vendeur a été notifié. Récupère le colis puis démarre la livraison.`,
+      [{ text: 'OK', onPress: () => load() }],
     );
   };
 
@@ -151,11 +186,16 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
         <Pressable onPress={navigation.goBack} hitSlop={10}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>Espace livreur</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Espace livreur</Text>
+          <StampBadge label="Livreur" color={colors.primaryDeep} size="sm" />
+        </View>
         <Pressable onPress={() => navigation.navigate('DriverRegistration')} hitSlop={10}>
           <Feather name="settings" size={22} color={colors.primary} />
         </Pressable>
       </View>
+      {/* Fil de Faso — couture signature */}
+      <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
       <FlatList
         data={currentList}
@@ -263,16 +303,140 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
           <View>
             <DeliveryCard delivery={item} onPress={() => handleOpen(item.id)} />
             {tab === 'available' && (
-              <Button
-                label="Accepter cette livraison"
-                onPress={() => handleAccept(item)}
-                style={{ marginBottom: spacing.md }}
-                icon={<Feather name="check" size={18} color={colors.textInverse} />}
-              />
+              <View>
+                {/* 💰 Note pour le livreur : c'est LUI qui fixe son prix */}
+                <View style={styles.priceHintBanner}>
+                  <Feather name="info" size={14} color={colors.primary} />
+                  <Text style={styles.priceHintText}>
+                    C'est TOI qui fixes ton prix à l'acceptation 💪
+                  </Text>
+                </View>
+                <Button
+                  label="Accepter et fixer mon prix"
+                  onPress={() => handleAccept(item)}
+                  style={{ marginBottom: spacing.md }}
+                  icon={<Feather name="dollar-sign" size={18} color={colors.textInverse} />}
+                />
+              </View>
             )}
           </View>
         )}
       />
+
+      {/* ============================================================ */}
+      {/* 💰 MODAL : Le livreur fixe SON prix à l'acceptation          */}
+      {/* ============================================================ */}
+      <Modal
+        visible={priceModal.visible}
+        onRequestClose={closePriceModal}
+        transparent
+        animationType="fade"
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.priceModalBackdrop} onPress={closePriceModal}>
+            <Pressable
+              style={styles.priceModalSheet}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.priceModalHandle} />
+              <View style={styles.priceModalIconWrap}>
+                <Feather name="dollar-sign" size={28} color={colors.surface} />
+              </View>
+              <Text style={styles.priceModalTitle}>Fixe TON prix 💪</Text>
+              <Text style={styles.priceModalSubtitle}>
+                C'est toi le livreur, c'est toi qui décides ton tarif ! Évalue
+                la distance, le colis et propose ton prix.
+              </Text>
+
+              {priceModal.delivery && (
+                <View style={styles.priceModalTripCard}>
+                  <View style={styles.priceModalTripRow}>
+                    <Feather name="map-pin" size={14} color={colors.primary} />
+                    <Text style={styles.priceModalTripText} numberOfLines={1}>
+                      {priceModal.delivery.pickup_city} → {priceModal.delivery.destination_city}
+                    </Text>
+                  </View>
+                  <View style={styles.priceModalTripRow}>
+                    <Feather name="navigation" size={14} color={colors.textMuted} />
+                    <Text style={styles.priceModalTripText}>
+                      {priceModal.delivery.distance_km} km · {priceModal.delivery.package_weight} kg
+                    </Text>
+                  </View>
+                  <View style={styles.priceModalTripRow}>
+                    <Feather name="tag" size={14} color={colors.textMuted} />
+                    <Text style={styles.priceModalTripHint}>
+                      Estimation vendeur : {formatFCFA(priceModal.delivery.price)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <Text style={styles.priceModalLabel}>Ton prix (FCFA)</Text>
+              <View style={styles.priceModalInputWrap}>
+                <TextInput
+                  style={styles.priceModalInput}
+                  value={priceModal.priceInput}
+                  onChangeText={(v) =>
+                    setPriceModal((m) => ({ ...m, priceInput: v.replace(/[^\d]/g, '') }))
+                  }
+                  placeholder="ex: 3000"
+                  keyboardType="numeric"
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={confirmAcceptWithPrice}
+                />
+                <Text style={styles.priceModalCurrency}>FCFA</Text>
+              </View>
+
+              {/* 💡 Suggestions rapides */}
+              <View style={styles.priceSuggestionsRow}>
+                {[1000, 2000, 3000, 5000].map((sugg) => {
+                  const active = priceModal.priceInput === String(sugg);
+                  return (
+                    <Pressable
+                      key={sugg}
+                      style={[styles.priceSuggestionChip, active && styles.priceSuggestionChipActive]}
+                      onPress={() =>
+                        setPriceModal((m) => ({ ...m, priceInput: String(sugg) }))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.priceSuggestionText,
+                          active && styles.priceSuggestionTextActive,
+                        ]}
+                      >
+                        {sugg.toLocaleString('fr-FR')}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.priceModalActions}>
+                <Button
+                  label="Annuler"
+                  variant="secondary"
+                  onPress={closePriceModal}
+                  disabled={priceModal.submitting}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  label={priceModal.submitting ? 'Envoi...' : 'Accepter à ce prix'}
+                  onPress={confirmAcceptWithPrice}
+                  loading={priceModal.submitting}
+                  disabled={priceModal.submitting}
+                  style={{ flex: 1.4 }}
+                  icon={<Feather name="check" size={18} color={colors.textInverse} />}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -317,6 +481,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.lg,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   title: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.heading,
@@ -441,5 +607,158 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily,
     fontSize: 10,
     fontWeight: typography.weights.bold,
+  },
+  // ─── Bannière d'info : "c'est toi qui fixes ton prix" ───
+  priceHintBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary + '12',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+  },
+  priceHintText: {
+    flex: 1,
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary,
+  },
+  // ─── Modal "Fixer mon prix" ───
+  priceModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  priceModalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  priceModalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  priceModalIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  priceModalTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.heading,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  priceModalSubtitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    lineHeight: 20,
+  },
+  priceModalTripCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  priceModalTripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  priceModalTripText: {
+    flex: 1,
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+  },
+  priceModalTripHint: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.textMuted,
+  },
+  priceModalLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  priceModalInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingHorizontal: spacing.md,
+  },
+  priceModalInput: {
+    flex: 1,
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.heading,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    paddingVertical: spacing.md,
+  },
+  priceModalCurrency: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary,
+  },
+  priceSuggestionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  priceSuggestionChip: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  priceSuggestionChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  priceSuggestionText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    color: colors.text,
+    fontWeight: typography.weights.semibold,
+  },
+  priceSuggestionTextActive: {
+    color: colors.textInverse,
+  },
+  priceModalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
 });

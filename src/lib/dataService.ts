@@ -2,6 +2,7 @@
 // Bascule automatiquement entre Supabase (si configuré) et les données de démo.
 
 import { supabase, isSupabaseConfigured } from './supabase';
+import { getOrSetCache, TTL, cacheKeys } from './cacheService';
 import {
   DEMO_CATEGORIES,
   DEMO_SHOPS,
@@ -52,12 +53,18 @@ export async function getCategories(): Promise<Category[]> {
     await delay(150);
     return DEMO_CATEGORIES;
   }
-  const { data, error } = await supabase
-    .from('categories')
-    .select('*')
-    .order('sort_order');
-  if (error) console.error('getCategories:', error.message);
-  return (data as Category[]) ?? [];
+  return getOrSetCache<Category[]>(
+    cacheKeys.category(),
+    async () => {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('sort_order');
+      if (error) console.error('getCategories:', error.message);
+      return (data as Category[]) ?? [];
+    },
+    { ttlMs: TTL.LONG },
+  );
 }
 
 // ---------- Boutiques ----------
@@ -156,6 +163,10 @@ export async function getProducts(
     .select('*, shop:shops(*), images:product_images(*), videos:product_videos(*)')
     .eq('status', 'available')
     .order('created_at', { ascending: false });
+  if (filters?.query) {
+    const q = filters.query.toLowerCase();
+    query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
+  }
   if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
   if (filters?.limit) query = query.limit(filters.limit);
   if (filters?.offset) query = query.range(filters.offset, filters.offset + (filters.limit ?? 20) - 1);
@@ -194,6 +205,45 @@ export async function getProductsByShop(
     .order('created_at', { ascending: false });
   if (error) console.error('getProductsByShop:', error.message);
   return (data as ProductWithImages[]) ?? [];
+}
+
+// ---------- Vues produits ----------
+
+export async function incrementProductView(productId: string): Promise<void> {
+  if (useDemo) return;
+  const { error } = await supabase
+    .rpc('increment_product_view', { p_product_id: productId });
+  if (error) console.error('incrementProductView:', error.message);
+}
+
+export async function getProductViews(productId: string): Promise<number> {
+  if (useDemo) {
+    await delay(50);
+    const p = DEMO_PRODUCTS.find((p) => p.id === productId);
+    return p?.views_count ?? 0;
+  }
+  const { data, error } = await supabase
+    .from('products')
+    .select('views_count')
+    .eq('id', productId)
+    .single();
+  if (error) console.error('getProductViews:', error.message);
+  return (data as any)?.views_count ?? 0;
+}
+
+export async function getTopViewedProducts(shopId: string, limit = 5): Promise<{ product_id: string; product_name: string; view_count: number }[]> {
+  if (useDemo) {
+    await delay(100);
+    return DEMO_PRODUCTS
+      .filter((p) => p.shop_id === shopId)
+      .sort((a, b) => b.views_count - a.views_count)
+      .slice(0, limit)
+      .map((p) => ({ product_id: p.id, product_name: p.name, view_count: p.views_count }));
+  }
+  const { data, error } = await supabase
+    .rpc('get_top_viewed_products', { p_shop_id: shopId, p_limit: limit });
+  if (error) console.error('getTopViewedProducts:', error.message);
+  return (data as any) ?? [];
 }
 
 // ---------- Avis ----------
@@ -243,7 +293,7 @@ export async function getActivePromotions(): Promise<Promotion[]> {
     .lte('start_date', new Date().toISOString())
     .gte('end_date', new Date().toISOString());
   if (error) console.error('getActivePromotions:', error.message);
-  return (data as Promotion[]) ?? [];
+  return (data as unknown as Promotion[]) ?? [];
 }
 
 // ---------- Adresses ----------
@@ -378,7 +428,7 @@ export async function uploadPaymentProof(
     operator,
     proof_image_url: proofImageUrl,
     status: 'pending',
-  });
+  } as any);
   if (error) return { error: error.message };
   await supabase
     .from('orders')
@@ -408,6 +458,7 @@ export async function validatePayment(
 
 export async function rejectPayment(
   orderId: string,
+  reason?: string,
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(300);
@@ -415,10 +466,10 @@ export async function rejectPayment(
   }
   const { error } = await supabase
     .from('payments')
-    .update({ status: 'rejected' })
+    .update({ status: 'rejected', rejection_reason: reason ?? null } as any)
     .eq('order_id', orderId);
   if (error) return { error: error.message };
-  await supabase.from('orders').update({ status: 'cancelled' }).eq('id', orderId);
+  await supabase.from('orders').update({ status: 'cancelled', cancellation_reason: reason ?? null } as any).eq('id', orderId);
   return { error: null };
 }
 
@@ -451,7 +502,7 @@ export async function getConversations(
     .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
     .order('created_at', { ascending: false });
   if (error) console.error('getConversations:', error.message);
-  return (data as Conversation[]) ?? [];
+  return (data as unknown as Conversation[]) ?? [];
 }
 
 export async function getMessages(conversationId: string): Promise<Message[]> {
@@ -571,24 +622,45 @@ export async function updateProduct(
     category_id: string;
     stock: number;
     status: ProductStatus;
+    image_urls: string[];
   }>,
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(200);
     return { error: null };
   }
+  // Séparer image_urls car c'est une relation (products_images) à mettre à jour
+  // via la procédure dédiée set_product_images, si fournie.
+  let imageUrlsErr: string | null = null;
+  if (params.image_urls) {
+    try {
+      const { error: rpcErr } = await (supabase.rpc as any)('set_product_images', {
+        p_product_id: productId,
+        p_image_urls: params.image_urls,
+      });
+      if (rpcErr) imageUrlsErr = rpcErr.message;
+    } catch (e: any) {
+      imageUrlsErr = e?.message ?? 'set_product_images RPC indisponible';
+    }
+  }
+  const payload = { ...params };
+  delete payload.image_urls;
   const { error } = await supabase
     .from('products')
-    .update(params)
+    .update(payload as any)
     .eq('id', productId);
-  return { error: error?.message ?? null };
+  return { error: error?.message ?? imageUrlsErr ?? null };
 }
 
-export async function deleteProduct(productId: string): Promise<void> {
-  if (useDemo) return;
-  await supabase.from('product_videos').delete().eq('product_id', productId);
-  await supabase.from('product_images').delete().eq('product_id', productId);
-  await supabase.from('products').delete().eq('id', productId);
+export async function deleteProduct(productId: string): Promise<{ error: string | null }> {
+  if (useDemo) return { error: null };
+  // Les images/vidéos sont supprimées automatiquement via ON DELETE CASCADE
+  const { error } = await supabase.from('products').delete().eq('id', productId);
+  if (error) {
+    console.error('deleteProduct:', error.message);
+    return { error: error.message };
+  }
+  return { error: null };
 }
 
 export async function createShop(params: {
@@ -599,7 +671,17 @@ export async function createShop(params: {
   city: string;
   orangeMoneyNumber?: string;
   moovMoneyNumber?: string;
+  corisMoneyNumber?: string;
+  waveNumber?: string;
   logoUrl?: string | null;
+  coverUrl?: string | null;
+  slogan?: string;
+  phoneNumber?: string;
+  whatsappNumber?: string;
+  email?: string;
+  address?: string;
+  openingHours?: import('@/types/models').ShopOpeningHours | null;
+  socialLinks?: import('@/types/models').ShopSocialLinks | null;
 }): Promise<{ shopId: string | null; error: string | null }> {
   if (useDemo) {
     await delay(300);
@@ -615,13 +697,60 @@ export async function createShop(params: {
       city: params.city,
       orange_money_number: params.orangeMoneyNumber ?? null,
       moov_money_number: params.moovMoneyNumber ?? null,
+      coris_money_number: params.corisMoneyNumber ?? null,
+      wave_number: params.waveNumber ?? null,
       logo_url: params.logoUrl ?? null,
-      status: 'active',
-    })
+      // La colonne réelle Supabase s'appelle banner_url (pas cover_url).
+      // Cohérent avec updateShop qui renomme cover_url -> banner_url.
+      banner_url: params.coverUrl ?? null,
+      slogan: params.slogan ?? null,
+      phone_number: params.phoneNumber ?? null,
+      whatsapp_number: params.whatsappNumber ?? null,
+      email: params.email ?? null,
+      address: params.address ?? null,
+      opening_hours: (params.openingHours ?? {}) as Record<string, unknown>,
+      social_links: (params.socialLinks ?? {}) as Record<string, unknown>,
+      status: 'pending',
+    } as any)
     .select('id')
     .single();
   if (error) return { shopId: null, error: error.message };
   return { shopId: data.id, error: null };
+}
+
+export async function updateShop(shopId: string, params: {
+  name?: string;
+  description?: string;
+  category_id?: string;
+  city?: string;
+  orange_money_number?: string | null;
+  moov_money_number?: string | null;
+  coris_money_number?: string | null;
+  wave_number?: string | null;
+  logo_url?: string | null;
+  cover_url?: string | null;
+  slogan?: string | null;
+  phone_number?: string | null;
+  whatsapp_number?: string | null;
+  email?: string | null;
+  address?: string | null;
+  opening_hours?: import('@/types/models').ShopOpeningHours | null;
+  social_links?: import('@/types/models').ShopSocialLinks | null;
+}): Promise<{ error: string | null }> {
+  if (useDemo) {
+    await delay(200);
+    return { error: null };
+  }
+  // Nettoyage : on ne passe pas les champs undefined à .update()
+  // Renommage cover_url -> banner_url (la colonne réelle Supabase s'appelle banner_url)
+  const payload: Record<string, unknown> = {};
+  (Object.keys(params) as Array<keyof typeof params>).forEach((k) => {
+    if (params[k] === undefined) return;
+    const col = k === 'cover_url' ? 'banner_url' : k;
+    payload[col] = params[k];
+  });
+  const { error } = await supabase.from('shops').update(payload as any).eq('id', shopId);
+  return { error: error?.message ?? null };
 }
 
 export async function createPromotion(params: {
@@ -656,8 +785,65 @@ export async function getPendingShops(): Promise<Shop[]> {
   const { data, error } = await supabase
     .from('shops')
     .select('*')
+    .eq('status', 'pending')
     .order('created_at', { ascending: false });
   if (error) console.error('getPendingShops:', error.message);
+  return (data as Shop[]) ?? [];
+}
+
+export async function approveShop(shopId: string): Promise<{ error: string | null }> {
+  if (useDemo) { await delay(200); return { error: null }; }
+  const { error } = await supabase
+    .from('shops')
+    .update({ status: 'active', updated_at: new Date().toISOString() } as any)
+    .eq('id', shopId);
+  return { error: error?.message ?? null };
+}
+
+export async function rejectShop(shopId: string, reason: string): Promise<{ error: string | null }> {
+  if (useDemo) { await delay(200); return { error: null }; }
+  const { error } = await supabase
+    .from('shops')
+    .update({ status: 'rejected', rejection_reason: reason, updated_at: new Date().toISOString() } as any)
+    .eq('id', shopId);
+  return { error: error?.message ?? null };
+}
+
+export async function toggleShopVerified(shopId: string, verified: boolean): Promise<{ error: string | null }> {
+  if (useDemo) { await delay(200); return { error: null }; }
+  const { error } = await supabase
+    .from('shops')
+    .update({ is_verified: verified, verified_at: verified ? new Date().toISOString() : null, updated_at: new Date().toISOString() } as any)
+    .eq('id', shopId);
+  return { error: error?.message ?? null };
+}
+
+export async function deleteShop(shopId: string): Promise<{ error: string | null }> {
+  if (useDemo) { await delay(200); return { error: null }; }
+  // Supprimer d'abord les données dépendantes
+  await supabase.from('product_videos').delete().in('product_id',
+    (await supabase.from('products').select('id').eq('shop_id', shopId)).data?.map(p => p.id) || []);
+  await supabase.from('product_images').delete().in('product_id',
+    (await supabase.from('products').select('id').eq('shop_id', shopId)).data?.map(p => p.id) || []);
+  await supabase.from('products').delete().eq('shop_id', shopId);
+  await supabase.from('shop_follows').delete().eq('shop_id', shopId);
+  await supabase.from('promotions').delete().eq('shop_id', shopId);
+  await supabase.from('share_links').delete().eq('shop_id', shopId);
+  await supabase.from('discount_codes').delete().eq('shop_id', shopId);
+  await supabase.from('reviews').delete().eq('shop_id', shopId);
+  await supabase.from('campaign_events').delete().eq('shop_id', shopId);
+  // Enfin, supprimer la boutique (CASCADE supprimera le reste)
+  const { error } = await supabase.from('shops').delete().eq('id', shopId);
+  return { error: error?.message ?? null };
+}
+
+export async function getAllShops(): Promise<Shop[]> {
+  if (useDemo) { await delay(200); return DEMO_SHOPS; }
+  const { data, error } = await supabase
+    .from('shops')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) console.error('getAllShops:', error.message);
   return (data as Shop[]) ?? [];
 }
 
@@ -674,6 +860,25 @@ export async function getReports(): Promise<any[]> {
     .order('created_at', { ascending: false });
   if (error) console.error('getReports:', error.message);
   return data ?? [];
+}
+
+/**
+ * Compte le nombre total d'utilisateurs (profiles).
+ * RLS profiles_select = USING (true) → autorisé pour tout le monde.
+ */
+export async function getUserCount(): Promise<number> {
+  if (useDemo) {
+    await delay(100);
+    return 0;
+  }
+  const { count, error } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true });
+  if (error) {
+    console.error('getUserCount:', error.message);
+    return 0;
+  }
+  return count ?? 0;
 }
 
 export { isSupabaseConfigured, useDemo as isDemoMode };

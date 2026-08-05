@@ -10,7 +10,7 @@ import { getCategoryName } from '@/constants/categories';
 import { formatFCFA } from '@/lib/format';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { PageLoader } from '@/components/ui/PageLoader';
 import type { Shop, ProductWithImages, ProductStatus } from '@/types/models';
 
 interface ProductManagementScreenProps {
@@ -38,7 +38,14 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
   const handleDelete = (product: ProductWithImages) => {
     Alert.alert('Supprimer', `Supprimer "${product.name}" ?`, [
       { text: 'Annuler' },
-      { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteProduct(product.id); await load(); } },
+      { text: 'Supprimer', style: 'destructive', onPress: async () => {
+        const { error } = await deleteProduct(product.id);
+        if (error) {
+          Alert.alert('Erreur', `Impossible de supprimer: ${error}`);
+        } else {
+          await load();
+        }
+      } },
     ]);
   };
 
@@ -59,7 +66,7 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
       </View>
 
       {loading ? (
-        <LoadingSpinner />
+        <PageLoader />
       ) : products.length === 0 ? (
         <EmptyState icon="package" title="Aucun produit" message="Ajoutez votre premier produit" action={
           <Pressable style={styles.addBtnLarge} onPress={() => navigation.navigate('AddEditProduct')}>

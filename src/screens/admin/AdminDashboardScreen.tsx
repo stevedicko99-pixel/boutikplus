@@ -3,8 +3,8 @@ import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getPendingShops, getReports, getProducts } from '@/lib/dataService';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { getPendingShops, getReports, getProducts, getUserCount } from '@/lib/dataService';
+import { PageLoader } from '@/components/ui/PageLoader';
 import { formatRelativeDate } from '@/lib/format';
 import type { Shop } from '@/types/models';
 
@@ -16,26 +16,37 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
   const [shops, setShops] = useState<Shop[]>([]);
   const [reports, setReports] = useState<any[]>([]);
   const [productCount, setProductCount] = useState(0);
+  const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const [s, r, p] = await Promise.all([getPendingShops(), getReports(), getProducts({ limit: 999 })]);
+      const [s, r, p, uc] = await Promise.all([getPendingShops(), getReports(), getProducts({ limit: 999 }), getUserCount()]);
       setShops(s);
       setReports(r);
       setProductCount(p.length);
+      setUserCount(uc);
       setLoading(false);
     })();
   }, []);
 
-  if (loading) return <SafeAreaView style={styles.container} edges={['top']}><LoadingSpinner /></SafeAreaView>;
+  if (loading) return <SafeAreaView style={styles.container} edges={['top']}><PageLoader /></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={navigation.goBack} hitSlop={10}><Feather name="arrow-left" size={24} color={colors.text} /></Pressable>
+        <Pressable onPress={navigation.goBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retour"><Feather name="arrow-left" size={24} color={colors.text} /></Pressable>
         <Text style={styles.title}>Administration</Text>
-        <View style={{ width: 24 }} />
+        <Pressable
+          onPress={() => navigation.navigate('Home')}
+          hitSlop={10}
+          style={styles.siteBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Retourner sur le site"
+        >
+          <Feather name="home" size={16} color={colors.primary} />
+          <Text style={styles.siteBtnText}>Site</Text>
+        </Pressable>
       </View>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Statistiques globales */}
@@ -43,7 +54,7 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
           <StatBox icon="briefcase" value={`${shops.length}`} label="Boutiques" color={colors.primary} onPress={() => navigation.navigate('ShopValidation')} />
           <StatBox icon="package" value={`${productCount}`} label="Produits" color={colors.secondary} />
           <StatBox icon="alert-circle" value={`${reports.length}`} label="Signalements" color={colors.danger} onPress={() => navigation.navigate('Reports')} />
-          <StatBox icon="users" value="128" label="Utilisateurs" color={colors.success} />
+          <StatBox icon="users" value={`${userCount}`} label="Utilisateurs" color={colors.success} />
         </View>
 
         {/* Boutiques à valider */}
@@ -143,4 +154,6 @@ const styles = StyleSheet.create({
   actionGrid: { flexDirection: 'row', gap: spacing.md },
   actionCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
   actionText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },
+  siteBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.primaryLight + '33', paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill },
+  siteBtnText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, fontWeight: typography.weights.bold, color: colors.primary },
 });

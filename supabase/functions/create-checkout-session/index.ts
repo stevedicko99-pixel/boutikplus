@@ -46,7 +46,7 @@ Deno.serve(async (req: Request) => {
   const cinetpayApiKey = Deno.env.get("CINETPAY_API_KEY");
   const cinetpaySiteId = Deno.env.get("CINETPAY_SITE_ID");
   const notifyUrl = Deno.env.get("CINETPAY_NOTIFY_URL");
-  const appUrl = Deno.env.get("APP_URL") ?? "https://boutikplus.app";
+  const appUrl = Deno.env.get("APP_URL") ?? "https://boutikplus.vercel.app";
 
   if (!supabaseUrl || !supabaseServiceKey) {
     return json({ error: "Configuration serveur manquante" }, 500);

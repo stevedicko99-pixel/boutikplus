@@ -10,7 +10,9 @@ import { OrderStatusBadge } from '@/components/order/OrderStatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { PageLoader } from '@/components/ui/PageLoader';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import { formatFCFA, formatDateTime } from '@/lib/format';
 import { FraudDetectionModal } from '@/components/fraud/FraudDetectionModal';
 import { notifyPaymentValidated, notifyProofUploaded } from '@/lib/notifications';
@@ -84,9 +86,14 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={navigation.goBack} hitSlop={10}><Feather name="arrow-left" size={24} color={colors.text} /></Pressable>
-        <Text style={styles.title}>Commandes</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Commandes</Text>
+          <StampBadge label="Commandes" color={colors.primaryDeep} size="sm" />
+        </View>
         <View style={{ width: 24 }} />
       </View>
+      {/* Fil de Faso — couture signature */}
+      <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
         {FILTERS.map((f) => (
@@ -97,7 +104,7 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
       </ScrollView>
 
       {loading ? (
-        <LoadingSpinner />
+        <PageLoader />
       ) : filtered.length === 0 ? (
         <EmptyState icon="shopping-bag" title="Aucune commande" message="Les commandes de vos clients apparaîtront ici" />
       ) : (
@@ -210,7 +217,9 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   filterScroll: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.md },
   filterChip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },

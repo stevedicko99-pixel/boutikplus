@@ -7,7 +7,9 @@ import { useAuth } from '@/context/AuthContext';
 import { getBuyerOrders } from '@/lib/dataService';
 import { OrderCard } from '@/components/order/OrderCard';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { PageLoader } from '@/components/ui/PageLoader';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
 import { ORDER_STATUS } from '@/lib/orderStatus';
 import type { Order, OrderItem, Shop, OrderStatus } from '@/types/models';
 
@@ -46,9 +48,15 @@ export function OrdersScreen({ navigation }: OrdersScreenProps) {
         <Pressable onPress={navigation.goBack} hitSlop={10}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>Mes commandes</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Mes commandes</Text>
+          <StampBadge label="Commandes" color={colors.primaryDeep} size="sm" />
+        </View>
         <View style={{ width: 24 }} />
       </View>
+
+      {/* Fil de Faso — couture signature */}
+      <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
         {FILTERS.map((f) => (
@@ -63,7 +71,7 @@ export function OrdersScreen({ navigation }: OrdersScreenProps) {
       </ScrollView>
 
       {loading ? (
-        <LoadingSpinner />
+        <PageLoader />
       ) : filtered.length === 0 ? (
         <EmptyState icon="package" title="Aucune commande" message="Vos commandes apparaîtront ici" />
       ) : (
@@ -93,6 +101,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   filterScroll: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.md },
   filterChip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },

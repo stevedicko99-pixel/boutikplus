@@ -635,6 +635,72 @@ export async function acceptDelivery(
   });
 }
 
+/**
+ * Raccourci : un livreur accepte une livraison EN FIXANT SON PROPRE PRIX.
+ * C'est désormais le livreur qui détermine son tarif à l'acceptation
+ * (en fonction de la distance, du colis, de son véhicule, etc.).
+ * Le prix proposé devient le prix final facturé au vendeur et versé au livreur.
+ */
+export async function acceptDeliveryWithPrice(
+  deliveryId: string,
+  driverUserId: string,
+  driverPrice: number,
+): Promise<{ error: string | null }> {
+  // Validation côté client (la DB valide aussi via CHECK + RPC)
+  if (!driverPrice || driverPrice <= 0) {
+    return { error: 'Le prix proposé doit être un montant positif (en FCFA).' };
+  }
+  if (driverPrice > 10_000_000) {
+    return { error: 'Le prix proposé est anormalement élevé (max 10 000 000 FCFA).' };
+  }
+
+  // Mode démo : on muter directement le cache local
+  if (useDemo) {
+    await delay(300);
+    const target = demoRequests.find((r) => r.id === deliveryId);
+    if (!target) return { error: 'Livraison introuvable.' };
+    if (target.status !== 'pending') {
+      return { error: `Cette livraison n'est plus disponible (statut : ${target.status}).` };
+    }
+    if (target.seller_id === driverUserId) {
+      return { error: 'Vous ne pouvez pas livrer votre propre demande.' };
+    }
+    const nowIso = new Date().toISOString();
+    demoRequests = demoRequests.map((r) =>
+      r.id === deliveryId
+        ? {
+            ...r,
+            driver_id: driverUserId,
+            driver_offer_price: driverPrice,
+            price: driverPrice,
+            price_set_by: 'driver' as const,
+            status: 'accepted' as DeliveryStatus,
+            accepted_at: nowIso,
+            updated_at: nowIso,
+          }
+        : r,
+    );
+    // Notifier le vendeur que le livreur a accepté
+    await sendStatusNotifications(target, 'accepted', { driverId: driverUserId });
+    return { error: null };
+  }
+
+  // Production : appel RPC qui fait atomiquement la mise à jour + vérifications
+  const { error } = await supabase.rpc('accept_delivery_with_price', {
+    p_delivery_id: deliveryId,
+    p_driver_user_id: driverUserId,
+    p_driver_price: Math.round(driverPrice),
+  });
+  if (error) return { error: error.message };
+
+  // Notifier le vendeur (la RPC n'envoie pas les notifs push elle-même)
+  const fresh = await getDeliveryById(deliveryId);
+  if (fresh) {
+    await sendStatusNotifications(fresh, 'accepted', { driverId: driverUserId });
+  }
+  return { error: null };
+}
+
 /** Raccourci : le livreur a récupéré le colis */
 export async function startDelivery(
   deliveryId: string,
@@ -726,7 +792,7 @@ export async function uploadDeliveryPayment(
     operator,
     proof_image_url: proofImageUrl,
     status: 'pending',
-  });
+  } as any);
   if (error) return { error: error.message };
   await notifyDeliveryPaymentUploaded(deliveryId);
   return { error: null };

@@ -34,6 +34,11 @@ export type SellerStackParamList = {
   SellerStats: undefined;
   Promotions: undefined;
   ShopEdit: undefined;
+  AIGlobalDashboard: undefined;
+  AILightningPush: undefined;
+  SmartContent: undefined;
+  AIProductAssistant: undefined;
+  Chatbot: { product?: any; shopName?: string } | undefined;
 };
 
 export type AdminStackParamList = {

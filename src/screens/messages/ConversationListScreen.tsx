@@ -48,9 +48,11 @@ export function ConversationListScreen({ navigation }: ConversationListScreenPro
               <Pressable
                 style={({ pressed }) => [styles.convItem, pressed && { opacity: 0.7 }]}
                 onPress={() => navigation.navigate('Chat', { conversationId: item.id, shopId: item.shop_id })}
+                accessibilityRole="button"
+                accessibilityLabel={`Ouvrir la conversation avec ${otherName}`}
               >
                 <Image
-                  source={{ uri: item.shop?.logo_url || 'https://placehold.co/80x80/FF6B00/FFFFFF?text=B' }}
+                  source={{ uri: item.shop?.logo_url || 'https://dummyimage.com/80x80/FF6B00/FFFFFF&text=B' }}
                   style={styles.avatar}
                   contentFit="cover"
                 />

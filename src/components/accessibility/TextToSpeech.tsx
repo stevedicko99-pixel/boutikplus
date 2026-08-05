@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useState, useCallback, useRef } from 'react';
+import { Pressable, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, radius } from '@/theme';
+import * as Speech from 'expo-speech';
+import { colors } from '@/theme';
 
 interface TextToSpeechProps {
   text: string;
@@ -10,19 +11,38 @@ interface TextToSpeechProps {
 }
 
 /**
- * Composant "écouter" - lit un texte à voix haute.
- * Utilise Speech API disponible sur mobile.
- * En mode démo, affiche un retour visuel.
+ * Composant "écouter" - lit un texte à voix haute via expo-speech (TTS offline).
+ * Fonctionne sans réseau, idéal pour le marché burkinabè.
+ * Le texte est automatiquement lu en français (langue de l'application).
  */
 export function TextToSpeech({ text, style, size = 'md' }: TextToSpeechProps) {
   const [playing, setPlaying] = useState(false);
+  const stoppedRef = useRef(false);
 
-  const handleToggle = () => {
-    setPlaying(!playing);
-    // En production, utiliser Speech.speak()
-    // Simulation : on toggle l'état visuel
-    setTimeout(() => setPlaying(false), 2000);
-  };
+  const handleToggle = useCallback(() => {
+    if (playing) {
+      Speech.stop();
+      stoppedRef.current = true;
+      setPlaying(false);
+      return;
+    }
+    stoppedRef.current = false;
+    setPlaying(true);
+    Speech.speak(text, {
+      language: 'fr-FR',
+      pitch: 1.0,
+      rate: 0.9,
+      onDone: () => {
+        if (!stoppedRef.current) setPlaying(false);
+      },
+      onError: () => {
+        setPlaying(false);
+      },
+      onStopped: () => {
+        setPlaying(false);
+      },
+    });
+  }, [text, playing]);
 
   const sizeMap = {
     sm: { width: 32, height: 32, iconSize: 14 },
@@ -42,7 +62,7 @@ export function TextToSpeech({ text, style, size = 'md' }: TextToSpeechProps) {
       ]}
       onPress={handleToggle}
       hitSlop={8}
-      accessibilityLabel="Écouter le texte"
+      accessibilityLabel={playing ? 'Arrêter la lecture' : 'Écouter le texte'}
       accessibilityRole="button"
     >
       <Feather

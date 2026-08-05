@@ -9,76 +9,85 @@
 // d'un autre utilisateur). L'envoi se fait via Edge Function avec
 // la service_role key (contourne RLS pour lire push_token).
 //
-// ⚠️ L'enregistrement du token nécessite `expo-notifications` (natif).
-//    Sur web ou sans expo-notifications, registerPushToken est un no-op.
-//    L'envoi via sendPushNotification fonctionne indépendamment (fetch).
-//
-// Installation d'expo-notifications (pour activer les push natifs) :
-//    npx expo install expo-notifications
-//    Puis décommenter le code dans getExpoPushToken() ci-dessous.
+// expo-notifications est installé et activé par défaut.
+// Le handler de premier-plan est initialisé dans App.tsx.
 // ============================================================
 
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { logger } from './logger';
 
 /** Indique si les notifications push natives sont disponibles sur cette plateforme */
 export function isPushAvailable(): boolean {
-  // expo-notifications nécessite un appareil natif (iOS/Android).
-  // Sur web, les push notifications ne sont pas supportées par Expo.
-  return Platform.OS !== 'web';
+  // expo-notifications nécessite un appareil natif (iOS/Android) physique.
+  // Sur web ou simulateur/émulateur, retourne false.
+  return Platform.OS !== 'web' && Device.isDevice === true;
+}
+
+/**
+ * Configure le handler de notification au premier-plan (appel UNE FOIS au démarrage).
+ * Sans ça, les notifications ne s'affichent pas quand l'app est ouverte.
+ */
+export function setupForegroundNotificationHandler(): void {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String((err as any) ?? 'unknown');
+    logger.error(`setupForegroundNotificationHandler: ${message}`, err as any);
+  }
 }
 
 /**
  * Demande la permission d'envoyer des notifications push.
  * @returns true si la permission a été accordée
- *
- * NOTE : nécessite expo-notifications installé. Sans le paquet,
- * retourne false (les push ne sont pas actifs).
  */
 export async function requestPushPermissions(): Promise<boolean> {
   if (!isPushAvailable()) return false;
 
-  // expo-notifications n'est pas installé dans cette version.
-  // Pour activer les push : `npx expo install expo-notifications`
-  // puis décommenter le bloc ci-dessous :
-  //
-  // const Notifications = (await import('expo-notifications')).default;
-  // const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  // let finalStatus = existingStatus;
-  // if (existingStatus !== 'granted') {
-  //   const { status } = await Notifications.requestPermissionsAsync();
-  //   finalStatus = status;
-  // }
-  // return finalStatus === 'granted';
-
-  logger.debug('requestPushPermissions: expo-notifications non installé');
-  return false;
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') {
+    logger.debug('requestPushPermissions: refusée');
+    return false;
+  }
+  return true;
 }
 
 /**
  * Récupère le token Expo Push de l'appareil courant.
  * @returns Le token (format `ExponentPushToken[...]`) ou null si indisponible
- *
- * NOTE : nécessite expo-notifications installé. Sans le paquet, retourne null.
  */
 export async function getExpoPushToken(): Promise<string | null> {
   if (!isPushAvailable()) return null;
 
-  // expo-notifications n'est pas installé dans cette version.
-  // Pour activer les push : `npx expo install expo-notifications`
-  // puis décommenter le bloc ci-dessous :
-  //
-  // const Notifications = (await import('expo-notifications')).default;
-  // const projectId = process.env.EXPO_PUBLIC_PROJECT_ID;
-  // const token = (await Notifications.getExpoPushTokenAsync({
-  //   projectId,
-  // })).data;
-  // if (!token?.startsWith('ExponentPushToken[')) return null;
-  // return token;
+  const projectId =
+    process.env.EXPO_PUBLIC_PROJECT_ID ||
+    // Récupère le projectId depuis Constants.expoConfig.extra (EAS Project ID) si set
+    undefined;
 
-  logger.debug('getExpoPushToken: expo-notifications non installé');
-  return null;
+  try {
+    const { data: token } = await Notifications.getExpoPushTokenAsync({
+      // @ts-ignore projectId peut être undefined, Notifications handle ça
+      projectId,
+    });
+    if (!token?.startsWith('ExponentPushToken[')) return null;
+    return token;
+  } catch (err) {
+    logger.error('getExpoPushToken: erreur', err);
+    return null;
+  }
 }
 
 /**

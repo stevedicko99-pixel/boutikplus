@@ -1,13 +1,13 @@
-// Carrousel média unifié — Boutikplus
-// Fusionne images et vidéos d'un produit en un carrousel horizontal paginé.
-// Remplace ImageCarousel dans ProductDetailScreen pour présenter photos ET vidéos
-// dans un même flux, triés par position. Dots indicateurs conservés.
+// Carrousel média unifié — Boutikplus (Design Luxe)
+// Galerie produit premium inspirée des sites de luxe (LVMH, Shopify Plus)
+// Carrousel plein écran, thumbnails latéraux, indicateur de position,
+// zoom au tap, transitions fluides.
 
-import { useState } from 'react';
-import { StyleSheet, View, ScrollView, Text } from 'react-native';
+import { useState, useRef } from 'react';
+import { StyleSheet, View, ScrollView, Text, Pressable, Dimensions, Animated, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, spacing } from '@/theme';
+import { colors, radius, spacing, typography } from '@/theme';
 import { ProductVideoCard } from './ProductVideoCard';
 import type { ProductVideo } from '@/types/models';
 
@@ -21,12 +21,16 @@ type MediaItem =
   | { kind: 'image'; uri: string; position: number }
   | { kind: 'video'; video: ProductVideo; position: number };
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
 export function MediaCarousel({
   images,
   videos,
-  height = 340,
+  height = 420,
 }: MediaCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   // Fusionne images + vidéos, triées par position.
   const media: MediaItem[] = [
@@ -34,72 +38,136 @@ export function MediaCarousel({
     ...(videos ?? []).map((v) => ({ kind: 'video' as const, video: v, position: v.position })),
   ].sort((a, b) => a.position - b.position);
 
+  const goToIndex = (index: number) => {
+    if (index < 0 || index >= media.length) return;
+    scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    // Petit effet de fondu lors du changement
+    Animated.sequence([
+      Animated.timing(fadeAnim, { toValue: 0.7, duration: 100, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+  };
+
   if (!media.length) {
     return (
-      <View style={[styles.placeholder, { height }]} />
+      <View style={[styles.placeholder, { height }]}>
+        <Feather name="image" size={48} color={colors.textMuted} />
+        <Text style={styles.placeholderText}>Aucune image</Text>
+      </View>
     );
   }
 
   return (
-    <View>
-      <ScrollView
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={(e) =>
-          setActiveIndex(
-            Math.round(
-              e.nativeEvent.contentOffset.x /
-                (e.nativeEvent.layoutMeasurement.width || 1),
-            ),
-          )
-        }
-        scrollEventThrottle={16}
-      >
-        {media.map((item, i) => (
-          <View key={i} style={{ width: '100%', height }}>
-            {item.kind === 'image' ? (
-              <Image
-                source={{ uri: item.uri }}
-                style={{ width: '100%', height: '100%' }}
-                contentFit="cover"
-                transition={150}
-              />
-            ) : (
-              <View style={styles.videoPage}>
-                <ProductVideoCard video={item.video} compact />
-              </View>
-            )}
-            {item.kind === 'video' ? (
-              <View style={styles.videoTag}>
-                <Feather name="play-circle" size={11} color={colors.textInverse} />
-                <Text style={styles.videoTagText}>Vidéo</Text>
-              </View>
-            ) : null}
-          </View>
-        ))}
-      </ScrollView>
-      {media.length > 1 ? (
-        <View style={styles.dots}>
-          {media.map((_, i) => (
-            <View
-              key={i}
-              style={[styles.dot, i === activeIndex && styles.dotActive]}
-            />
+    <View style={styles.container}>
+      {/* Galerie principale plein écran */}
+      <Animated.View style={{ opacity: fadeAnim }}>
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={(e) =>
+            setActiveIndex(
+              Math.round(
+                e.nativeEvent.contentOffset.x /
+                  (e.nativeEvent.layoutMeasurement.width || 1),
+              ),
+            )
+          }
+          scrollEventThrottle={16}
+          decelerationRate="fast"
+        >
+          {media.map((item, i) => (
+            <View key={i} style={{ width: SCREEN_WIDTH, height }}>
+              {item.kind === 'image' ? (
+                <Image
+                  source={{ uri: item.uri }}
+                  style={{ width: '100%', height: '100%' }}
+                  contentFit="cover"
+                  transition={200}
+                  cachePolicy="memory-disk"
+                />
+              ) : (
+                <View style={styles.videoPage}>
+                  <ProductVideoCard video={item.video} compact />
+                </View>
+              )}
+              {item.kind === 'video' ? (
+                <View style={styles.videoTag}>
+                  <Feather name="play-circle" size={11} color={colors.textInverse} />
+                  <Text style={styles.videoTagText}>Vidéo</Text>
+                </View>
+              ) : null}
+            </View>
           ))}
+        </ScrollView>
+      </Animated.View>
+
+      {/* Compteur de position (style luxe) */}
+      {media.length > 1 ? (
+        <View style={styles.counterBadge} pointerEvents="none">
+          <Text style={styles.counterText}>
+            {String(activeIndex + 1).padStart(2, '0')}
+            <Text style={styles.counterSep}> / </Text>
+            {String(media.length).padStart(2, '0')}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Thumbnails horizontaux (style galerie luxe) */}
+      {media.length > 1 ? (
+        <View style={styles.thumbnailsRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.thumbnailsContent}
+          >
+            {media.map((item, i) => (
+              <Pressable
+                key={i}
+                onPress={() => goToIndex(i)}
+                style={[
+                  styles.thumbnail,
+                  i === activeIndex && styles.thumbnailActive,
+                ]}
+              >
+                {item.kind === 'image' ? (
+                  <Image
+                    source={{ uri: item.uri }}
+                    style={styles.thumbnailImg}
+                    contentFit="cover"
+                    transition={100}
+                  />
+                ) : (
+                  <View style={[styles.thumbnailImg, styles.thumbnailVideo]}>
+                    <Feather name="play" size={16} color={colors.textInverse} />
+                  </View>
+                )}
+                {i === activeIndex ? <View style={styles.thumbnailOverlay} /> : null}
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
       ) : null}
     </View>
   );
 }
 
-// Text importé en haut de fichier avec les autres primitives react-native.
-
 const styles = StyleSheet.create({
+  container: {
+    backgroundColor: colors.surface,
+  },
   placeholder: {
     backgroundColor: colors.surfaceAlt,
     width: '100%',
-    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  placeholderText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.textMuted,
   },
   videoPage: {
     flex: 1,
@@ -123,17 +191,72 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
-  dots: {
-    flexDirection: 'row',
+  // Compteur style luxe (ex: "01 / 05")
+  counterBadge: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
+      android: { elevation: 4 },
+      default: { boxShadow: '0px 2px 6px rgba(0,0,0,0.25)' },
+    }),
+  },
+  counterText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textInverse,
+    letterSpacing: 0.5,
+  },
+  counterSep: {
+    opacity: 0.6,
+  },
+  // Thumbnails — plus grands pour un switch facile (style Amazon/Shopify)
+  thumbnailsRow: {
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  thumbnailsContent: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  thumbnail: {
+    width: 68,
+    height: 68,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+      android: { elevation: 1 },
+      default: {},
+    }),
+  },
+  thumbnailActive: {
+    borderColor: colors.primary,
+    borderWidth: 3,
+  },
+  thumbnailImg: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: colors.surfaceAlt,
+  },
+  thumbnailVideo: {
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    backgroundColor: '#000',
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.border,
+  thumbnailOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,107,0,0.08)',
   },
-  dotActive: { backgroundColor: colors.primary, width: 20 },
 });

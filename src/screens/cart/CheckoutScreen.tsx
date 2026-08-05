@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { getAddresses, saveAddress, createOrder } from '@/lib/dataService';
+import { CheckoutStepper } from '@/components/ui/CheckoutStepper';
+import { ThreadDivider } from '@/components/ui/ThreadDivider';
+import { StampBadge } from '@/components/ui/StampBadge';
+import { getAddresses, saveAddress, createOrder, isDemoMode } from '@/lib/dataService';
 import { validateDiscountCode, redeemDiscountCode } from '@/lib/promotionService';
 import { formatFCFA } from '@/lib/format';
 import { friendlyMessage } from '@/lib/errorMessages';
@@ -21,7 +24,11 @@ interface CheckoutScreenProps {
 
 export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   const { sellerGroups, total, clear } = useCart();
-  const { profile } = useAuth();
+  const { profile, setPendingReturnTo } = useAuth();
+  // En mode démo, profile est toujours null (pas de Supabase). On utilise un
+  // buyer de démonstration pour permettre le parcours complet jusqu'au paiement.
+  const demoBuyerId = 'demo-buyer';
+  const buyerId = profile?.id ?? (isDemoMode ? demoBuyerId : null);
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
   const [selectedAddr, setSelectedAddr] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -41,11 +48,12 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   } | null>(null);
 
   useEffect(() => {
-    if (profile) loadAddresses();
-  }, [profile]);
+    if (buyerId) loadAddresses();
+  }, [buyerId]);
 
   const loadAddresses = async () => {
-    const addrs = await getAddresses(profile!.id);
+    if (!buyerId) return;
+    const addrs = await getAddresses(buyerId);
     setAddresses(addrs);
     const def = addrs.find((a) => a.is_default) ?? addrs[0];
     if (def) setSelectedAddr(def.id);
@@ -56,12 +64,13 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
       Alert.alert('Erreur', 'Veuillez remplir le quartier et le téléphone');
       return;
     }
+    if (!buyerId) return;
     await saveAddress({
       city: newAddr.city,
       district: newAddr.district,
       instructions: newAddr.instructions,
       contact_phone: newAddr.phone,
-      user_id: profile!.id,
+      user_id: buyerId,
       is_default: addresses.length === 0,
     });
     setShowAddrForm(false);
@@ -130,7 +139,21 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   const discountAmount = appliedPromo?.result.discount_amount ?? 0;
 
   const handlePlaceOrder = async () => {
-    if (!profile || sellerGroups.length === 0) return;
+    // CAS INVITÉ (mode réel) : connexion obligatoire SEULEMENT au moment de payer.
+    // On conserve le contexte (returnTo=Checkout) puis on redirige.
+    // LoginScreen appellera mergeAnonymousCart() pour garder le panier.
+    // En mode démo, buyerId est toujours défini ('demo-buyer'), on passe donc
+    // directement au paiement.
+    if (!buyerId) {
+      setPendingReturnTo({ screen: 'Checkout' });
+      navigation.navigate('Login', { returnTo: 'Checkout' });
+      return;
+    }
+    if (sellerGroups.length === 0) return;
+    if (!selectedAddr) {
+      Alert.alert('Adresse requise', 'Veuillez sélectionner ou ajouter une adresse de livraison');
+      return;
+    }
     setLoading(true);
     const orderIds: string[] = [];
     let redeemedOrderId: string | null = null;
@@ -142,7 +165,7 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
           : 0;
       const groupTotal = Math.max(0, group.subtotal - groupDiscount);
       const { orderId, error } = await createOrder({
-        buyerId: profile.id,
+        buyerId: buyerId,
         sellerId: group.sellerId,
         items: group.lines.map((l) => ({
           product_id: l.product.id,
@@ -172,15 +195,23 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         code: appliedPromo.result.discount_code!.code,
         shopId: appliedPromo.shopId,
         orderId: redeemedOrderId,
-        buyerId: profile.id,
+        buyerId,
         amount: appliedPromo.result.discount_amount,
       }).catch((e) => console.error('redeemDiscountCode:', e));
     }
 
     clear();
+    setPendingReturnTo(null); // Consommé
     setLoading(false);
     // Pour la démo, on va au paiement du premier order
-    navigation.navigate('Payment', { orderId: orderIds[0] });
+    // On passe aussi amount + shopId pour que PaymentScreen puisse fonctionner
+    // même si la commande n'est pas encore trouvable (démo / cache).
+    const firstGroup = sellerGroups[0];
+    navigation.navigate('Payment', {
+      orderId: orderIds[0],
+      amount: firstGroup ? Math.max(0, firstGroup.subtotal - (appliedPromo && appliedPromo.sellerId === firstGroup.sellerId ? appliedPromo.result.discount_amount : 0)) : undefined,
+      shopId: firstGroup?.shop?.id,
+    });
   };
 
   const deliveryFee = sellerGroups.length * 1000;
@@ -192,9 +223,45 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         <Pressable onPress={navigation.goBack} hitSlop={10}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>Commande</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Commande</Text>
+          <StampBadge label="Commande" color={colors.primaryDeep} size="sm" />
+        </View>
         <View style={{ width: 24 }} />
       </View>
+
+      {/* Fil de Faso — couture signature */}
+      <ThreadDivider color={colors.stitch} style={styles.titleThread} />
+
+      {/* Bannière invité friendly : pas besoin de compte pour voir le panier !
+          Login demandé SEULEMENT au clic sur "Payer". */}
+      {!buyerId ? (
+        <View style={styles.guestBanner}>
+          <View style={styles.guestIcon}>
+            <Feather name="user-plus" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1, marginLeft: spacing.md }}>
+            <Text style={styles.guestTitle}>Pas de compte ? Aucun souci ✨</Text>
+            <Text style={styles.guestDesc}>
+              Tu peux préparer ta commande tranquillement. La connexion ne sera
+              demandée qu'au moment de payer (en 10 secondes).
+            </Text>
+          </View>
+          <Pressable
+            style={styles.guestCta}
+            onPress={() => {
+              setPendingReturnTo({ screen: 'Checkout' });
+              navigation.navigate('Login', { returnTo: 'Checkout' });
+            }}
+          >
+            <Text style={styles.guestCtaText}>Se connecter</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* Stepper 4 étapes : CheckoutScreen = étapes adresse + récap */}
+      <CheckoutStepper current="address" />
+
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Adresse de livraison */}
         <Text style={styles.sectionTitle}>Adresse de livraison</Text>
@@ -301,6 +368,42 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
           </View>
         )}
 
+        {/* Bandeau « Livraison = option séparée » — EXIGENCES UTILISATEUR */}
+        <View style={{
+          backgroundColor: colors.surfaceAlt,
+          borderWidth: 1,
+          borderColor: colors.secondaryDeep,
+          borderStyle: 'dashed',
+          padding: spacing.md,
+          borderRadius: radius.md,
+          marginHorizontal: spacing.lg,
+          marginTop: spacing.sm,
+          marginBottom: spacing.md,
+        }}>
+          <View style={{flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start'}}>
+            <MaterialCommunityIcons name="truck-fast-outline" size={22} color={colors.secondaryDeep} />
+            <View style={{flex: 1, gap: 4}}>
+              <Text style={{
+                fontFamily: typography.fontFamily,
+                fontSize: typography.sizes.small,
+                fontWeight: typography.weights.bold,
+                color: colors.secondaryDeep,
+              }}>
+                📦 LIVRAISON — OPTION SÉPARÉE
+              </Text>
+              <Text style={{
+                fontFamily: typography.fontFamily,
+                fontSize: typography.sizes.caption,
+                color: colors.text,
+                lineHeight: 19,
+              }}>
+                Les frais de livraison ne sont JAMAIS inclus dans le prix du produit.
+                Ils sont calculés ci-dessous par vendeur et payés au livreur indépendant.
+              </Text>
+            </View>
+          </View>
+        </View>
+
         {/* Totaux */}
         <Card style={styles.totalsCard}>
           <View style={styles.totalRow}><Text style={styles.totalLabel}>Sous-total</Text><Text style={styles.totalValue}>{formatFCFA(total)}</Text></View>
@@ -330,7 +433,55 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
+  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
+  /* Bannière invité */
+  guestBanner: {
+    marginHorizontal: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.primary + '40',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  guestIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+  },
+  guestDesc: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.textMuted,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  guestCta: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    marginLeft: spacing.sm,
+  },
+  guestCtaText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.bold,
+    color: colors.textInverse,
+  },
   scroll: { padding: spacing.lg, paddingTop: 0, paddingBottom: 120 },
   sectionTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.md },
   addrCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1.5, borderColor: colors.border },

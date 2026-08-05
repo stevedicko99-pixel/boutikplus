@@ -1,12 +1,18 @@
+// Button — CTA signature « Fil de Faso ».
+// Coins pincés légers, letter-spacing tight, ombre teintée sur primary/secondary,
+// accent primaryDeep pour ancrer le premium. Pressé → translateY + opacity (web)
+// pour un feedback tactile doux (pas de rebord dur).
+import { memo } from 'react';
 import {
   StyleSheet,
   Pressable,
   Text,
   ActivityIndicator,
+  Platform,
   type ViewStyle,
   type StyleProp,
 } from 'react-native';
-import { colors, typography, radius, spacing } from '@/theme';
+import { colors, typography, radius, spacing, shadows } from '@/theme';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
@@ -23,7 +29,7 @@ interface ButtonProps {
   fullWidth?: boolean;
 }
 
-export function Button({
+function ButtonComponent({
   label,
   onPress,
   variant = 'primary',
@@ -45,20 +51,23 @@ export function Button({
   const textColor = {
     primary: colors.textInverse,
     secondary: colors.textInverse,
-    outline: colors.primary,
-    ghost: colors.primary,
+    outline: colors.primaryDeep,
+    ghost: colors.primaryDeep,
     danger: colors.textInverse,
   }[variant];
   const borderColor = {
-    primary: colors.primary,
-    secondary: colors.secondary,
+    primary: 'transparent',
+    secondary: 'transparent',
     outline: colors.primary,
     ghost: 'transparent',
-    danger: colors.danger,
+    danger: 'transparent',
   }[variant];
 
   const padding = { sm: spacing.sm, md: spacing.md, lg: spacing.lg }[size];
   const fontSize = { sm: typography.sizes.small, md: typography.sizes.body, lg: typography.sizes.subtitle }[size];
+
+  // Ombre teintée seulement sur variantes pleines (évoque la carte Fani)
+  const withShadow = variant === 'primary' || variant === 'secondary' || variant === 'danger';
 
   return (
     <Pressable
@@ -70,9 +79,11 @@ export function Button({
           backgroundColor: bgColor,
           borderColor,
           paddingVertical: padding,
-          opacity: isDisabled ? 0.5 : pressed ? 0.85 : 1,
+          opacity: isDisabled ? 0.5 : 1,
         },
+        withShadow && !isDisabled && styles.shadowed,
         fullWidth && styles.fullWidth,
+        Platform.OS === 'web' && pressed && !isDisabled && styles.pressedWeb,
         style,
       ]}
     >
@@ -81,9 +92,7 @@ export function Button({
       ) : (
         <>
           {icon}
-          <Text style={[styles.label, { color: textColor, fontSize }]}>
-            {label}
-          </Text>
+          <Text style={[styles.label, { color: textColor, fontSize }]}>{label}</Text>
         </>
       )}
     </Pressable>
@@ -96,13 +105,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    borderRadius: radius.md,
+    // Coins pincés légers
+    borderTopLeftRadius: radius.md + 4,
+    borderTopRightRadius: radius.md,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md + 4,
     borderWidth: 1.5,
     paddingHorizontal: spacing.lg,
+  },
+  shadowed: {
+    ...shadows.fani,
+  },
+  pressedWeb: {
+    transform: [{ translateY: 1 }],
+    opacity: 0.9,
   },
   fullWidth: { width: '100%' },
   label: {
     fontFamily: typography.fontFamily,
-    fontWeight: typography.weights.semibold,
+    fontWeight: typography.weights.bold,
+    letterSpacing: typography.letterSpacings.tight,
   },
 });
+
+export const Button = memo(ButtonComponent);
