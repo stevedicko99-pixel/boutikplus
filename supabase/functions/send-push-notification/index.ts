@@ -60,6 +60,26 @@ Deno.serve(async (req: Request) => {
     return json({ error: "userId, title, body requis" }, 400);
   }
 
+  const authorization = req.headers.get("Authorization");
+  const jwt = authorization?.replace(/^Bearer\s+/i, "");
+  if (!jwt) return json({ error: "Authentification requise" }, 401);
+
+  const { data: authData, error: authError } = await supabase.auth.getUser(jwt);
+  if (authError || !authData.user) return json({ error: "Session invalide" }, 401);
+
+  const { data: caller } = await supabase
+    .from("profiles")
+    .select("role, primary_role, roles")
+    .eq("id", authData.user.id)
+    .single();
+  const roles = Array.isArray(caller?.roles) ? caller.roles : [];
+  const isAdmin = [caller?.role, caller?.primary_role, ...roles].some((role) =>
+    role === "admin" || role === "super_admin"
+  );
+  if (authData.user.id !== userId && !isAdmin) {
+    return json({ error: "Envoi non autorisé" }, 403);
+  }
+
   // NOTE: Le push token Expo doit être stocké dans profiles.push_token.
   // Si la colonne n'existe pas encore, ajoutez-la via :
   //   ALTER TABLE profiles ADD COLUMN push_token TEXT;
@@ -74,7 +94,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const pushToken = (profile as { push_token?: string }).push_token;
-  if (!pushToken || !pushToken.startsWith("ExponentPushToken[")) {
+  if (!pushToken || !/^Expo(nent)?PushToken\[.+\]$/.test(pushToken)) {
     // Pas de token = l'utilisateur n'a pas activé les notifications. Ce n'est pas une erreur.
     return json({ sent: false, reason: "no_push_token" }, 200);
   }

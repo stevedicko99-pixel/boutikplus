@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
+  useWindowDimensions,
   View,
   Text,
   FlatList,
@@ -490,6 +491,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   list: { padding: spacing.lg, paddingTop: 0 },
+  wideList: { width: '100%', maxWidth: 1080, alignSelf: 'center' },
   profileCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -631,7 +633,7 @@ const styles = StyleSheet.create({
   // ─── Modal "Fixer mon prix" ───
   priceModalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   priceModalSheet: {

@@ -26,6 +26,12 @@ import type {
   VehicleType,
   PaymentOperatorId,
   Profile,
+  DriverLocation,
+  DeliveryEvent,
+  DeliveryIncident,
+  DeliveryIncidentStatus,
+  DeliveryMessage,
+  DeliveryOperationsSummary,
 } from '@/types/models';
 import type { Database } from '@/types/database';
 
@@ -66,10 +72,17 @@ export interface DriverFilters {
 // ============================================================
 export interface CreateDeliveryParams {
   sellerId: string;
+  orderId?: string | null;
+  buyerId?: string | null;
   pickupAddress: string;
   pickupCity: string;
   destinationAddress: string;
   destinationCity: string;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  destinationLat?: number | null;
+  destinationLng?: number | null;
+  estimatedArrivalAt?: string | null;
   packageWeight: number;
   packageLength: number;
   packageWidth: number;
@@ -398,7 +411,7 @@ export async function getDeliveryById(
   const { data, error } = await supabase
     .from('delivery_requests')
     .select(
-      '*, seller:profiles!seller_id(id, full_name, phone, avatar_url, city), driver:driver_profiles(*, profile:profiles(id, full_name, phone, avatar_url, city)), payment:delivery_payments(*)',
+      '*, seller:profiles!seller_id(id, full_name, phone, avatar_url, city), buyer:profiles!buyer_id(id, full_name, phone, avatar_url, city), driver:driver_profiles(*, profile:profiles(id, full_name, phone, avatar_url, city)), payment:delivery_payments(*)',
     )
     .eq('id', deliveryId)
     .single();
@@ -420,14 +433,20 @@ export async function createDeliveryRequest(
     await delay(300);
     const now = new Date().toISOString();
     const newId = `deliv-demo-${Date.now()}`;
-    const newRequest = {
+    const newRequest: DeliveryRequest = {
       id: newId,
+      order_id: params.orderId ?? null,
+      buyer_id: params.buyerId ?? null,
       seller_id: params.sellerId,
       driver_id: null,
       pickup_address: params.pickupAddress,
       pickup_city: params.pickupCity,
       destination_address: params.destinationAddress,
       destination_city: params.destinationCity,
+      pickup_lat: params.pickupLat ?? null,
+      pickup_lng: params.pickupLng ?? null,
+      destination_lat: params.destinationLat ?? null,
+      destination_lng: params.destinationLng ?? null,
       package_weight: params.packageWeight,
       package_length: params.packageLength,
       package_width: params.packageWidth,
@@ -442,7 +461,16 @@ export async function createDeliveryRequest(
       created_at: now,
       updated_at: now,
       accepted_at: null,
+      started_at: null,
+      estimated_arrival_at: params.estimatedArrivalAt ?? null,
+      last_location_at: null,
       delivered_at: null,
+      cancelled_at: null,
+      cancelled_by: null,
+      refund_amount: null,
+      refund_reason: null,
+      refund_reference: null,
+      refunded_at: null,
       seller: {
         id: 'demo-seller',
         full_name: 'Ibrahim Ouédraogo',
@@ -459,11 +487,18 @@ export async function createDeliveryRequest(
   const { data, error } = await supabase
     .from('delivery_requests')
     .insert({
+      order_id: params.orderId ?? null,
+      buyer_id: params.buyerId ?? null,
       seller_id: params.sellerId,
       pickup_address: params.pickupAddress,
       pickup_city: params.pickupCity,
       destination_address: params.destinationAddress,
       destination_city: params.destinationCity,
+      pickup_lat: params.pickupLat ?? null,
+      pickup_lng: params.pickupLng ?? null,
+      destination_lat: params.destinationLat ?? null,
+      destination_lng: params.destinationLng ?? null,
+      estimated_arrival_at: params.estimatedArrivalAt ?? null,
       package_weight: params.packageWeight,
       package_length: params.packageLength,
       package_width: params.packageWidth,
@@ -701,10 +736,24 @@ export async function acceptDeliveryWithPrice(
   return { error: null };
 }
 
+async function transitionDelivery(
+  deliveryId: string,
+  action: 'start' | 'deliver' | 'cancel' | 'refund',
+  reason?: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('transition_delivery', {
+    p_delivery_id: deliveryId,
+    p_action: action,
+    p_reason: reason ?? null,
+  });
+  return { error: error?.message ?? null };
+}
+
 /** Raccourci : le livreur a récupéré le colis */
 export async function startDelivery(
   deliveryId: string,
 ): Promise<{ error: string | null }> {
+  if (!useDemo) return transitionDelivery(deliveryId, 'start');
   return updateDeliveryStatus(deliveryId, 'in_progress', 'driver');
 }
 
@@ -712,6 +761,7 @@ export async function startDelivery(
 export async function completeDelivery(
   deliveryId: string,
 ): Promise<{ error: string | null }> {
+  if (!useDemo) return transitionDelivery(deliveryId, 'deliver');
   return updateDeliveryStatus(deliveryId, 'delivered', 'driver');
 }
 
@@ -721,6 +771,7 @@ export async function cancelDelivery(
   actorRole: 'driver' | 'seller',
   reason?: string,
 ): Promise<{ error: string | null }> {
+  if (!useDemo) return transitionDelivery(deliveryId, 'cancel', reason);
   return updateDeliveryStatus(deliveryId, 'cancelled', actorRole, {
     cancellationReason: reason,
   });
@@ -731,6 +782,7 @@ export async function requestRefund(
   deliveryId: string,
   reason?: string,
 ): Promise<{ error: string | null }> {
+  if (!useDemo) return transitionDelivery(deliveryId, 'refund', reason);
   // Le remboursement est une transition vendeur delivered → refunded
   return updateDeliveryStatus(deliveryId, 'refunded', 'seller', {
     cancellationReason: reason,
@@ -1025,7 +1077,129 @@ export async function getDriverStats(
 }
 
 // ============================================================
-// 8. Souscription temps réel (Supabase uniquement — no-op en démo)
+// 8. Suivi sécurisé, événements, messages et incidents
+// ============================================================
+export async function getDriverLocation(deliveryId: string): Promise<DriverLocation | null> {
+  if (useDemo) return null;
+  const { data, error } = await supabase.from('driver_locations').select('*').eq('delivery_id', deliveryId).maybeSingle();
+  if (error) console.error('getDriverLocation:', error.message);
+  return data as DriverLocation | null;
+}
+
+export async function updateDriverLocation(params: {
+  deliveryId: string; latitude: number; longitude: number; accuracyM?: number | null;
+  heading?: number | null; speedMps?: number | null; recordedAt?: string;
+}): Promise<{ location: DriverLocation | null; error: string | null }> {
+  if (useDemo) return { location: null, error: null };
+  const { data, error } = await supabase.rpc('update_driver_location', {
+    p_delivery_id: params.deliveryId, p_latitude: params.latitude, p_longitude: params.longitude,
+    p_accuracy_m: params.accuracyM ?? null, p_heading: params.heading ?? null,
+    p_speed_mps: params.speedMps ?? null, p_recorded_at: params.recordedAt ?? new Date().toISOString(),
+  });
+  return { location: data as DriverLocation | null, error: error?.message ?? null };
+}
+
+export async function getDeliveryEvents(deliveryId: string): Promise<DeliveryEvent[]> {
+  if (useDemo) return [];
+  const { data, error } = await supabase.from('delivery_events').select('*').eq('delivery_id', deliveryId).order('created_at', { ascending: true });
+  if (error) console.error('getDeliveryEvents:', error.message);
+  return (data as DeliveryEvent[]) ?? [];
+}
+
+export async function getDeliveryMessages(deliveryId: string): Promise<DeliveryMessage[]> {
+  if (useDemo) return [];
+  const { data, error } = await supabase.from('delivery_messages').select('*, sender:profiles(id, full_name, avatar_url)').eq('delivery_id', deliveryId).order('created_at', { ascending: true });
+  if (error) console.error('getDeliveryMessages:', error.message);
+  return (data as DeliveryMessage[]) ?? [];
+}
+
+export async function sendDeliveryMessage(deliveryId: string, senderId: string, content: string): Promise<{ message: DeliveryMessage | null; error: string | null }> {
+  if (!content.trim()) return { message: null, error: 'Le message est requis' };
+  if (useDemo) return { message: null, error: null };
+  const { data, error } = await supabase.from('delivery_messages').insert({ delivery_id: deliveryId, sender_id: senderId, content: content.trim() }).select('*').single();
+  return { message: data as DeliveryMessage | null, error: error?.message ?? null };
+}
+
+export async function getDeliveryIncidents(deliveryId?: string): Promise<DeliveryIncident[]> {
+  if (useDemo) return [];
+  let query = supabase.from('delivery_incidents').select('*');
+  if (deliveryId) query = query.eq('delivery_id', deliveryId);
+  const { data, error } = await query.order('created_at', { ascending: false });
+  if (error) console.error('getDeliveryIncidents:', error.message);
+  return (data as DeliveryIncident[]) ?? [];
+}
+
+export async function reportDeliveryIncident(deliveryId: string, category: string, description: string): Promise<{ incident: DeliveryIncident | null; error: string | null }> {
+  if (useDemo) return { incident: null, error: null };
+  const { data, error } = await supabase.rpc('report_delivery_incident', { p_delivery_id: deliveryId, p_category: category, p_description: description });
+  return { incident: data as DeliveryIncident | null, error: error?.message ?? null };
+}
+
+export async function resolveDeliveryIncident(incidentId: string, status: Exclude<DeliveryIncidentStatus, 'open'>, resolution: string | null, assignedAdminId?: string | null): Promise<{ incident: DeliveryIncident | null; error: string | null }> {
+  if (useDemo) return { incident: null, error: null };
+  const { data, error } = await supabase.rpc('resolve_delivery_incident', {
+    p_incident_id: incidentId, p_status: status, p_resolution: resolution,
+    p_assigned_admin_id: assignedAdminId ?? null,
+  });
+  return { incident: data as DeliveryIncident | null, error: error?.message ?? null };
+}
+
+export async function getDeliveryOperationsSummary(): Promise<{ summary: DeliveryOperationsSummary | null; error: string | null }> {
+  if (useDemo) return { summary: null, error: null };
+  const { data, error } = await supabase.rpc('get_delivery_operations_summary', {});
+  return { summary: data as DeliveryOperationsSummary | null, error: error?.message ?? null };
+}
+
+export async function getOpenDeliveryIncidents(): Promise<DeliveryIncident[]> {
+  if (useDemo) return [];
+  const { data, error } = await supabase
+    .from('delivery_incidents')
+    .select('*')
+    .in('status', ['open', 'investigating'])
+    .order('created_at', { ascending: false });
+  if (error) console.error('getOpenDeliveryIncidents:', error.message);
+  return (data as DeliveryIncident[]) ?? [];
+}
+
+export async function getActiveDeliveriesForAdmin(): Promise<DeliveryRequest[]> {
+  if (useDemo) return demoRequests.filter((delivery) =>
+    delivery.status === 'accepted' || delivery.status === 'in_progress',
+  );
+  const { data, error } = await supabase
+    .from('delivery_requests')
+    .select('*, seller:profiles!seller_id(id, full_name, phone, avatar_url, city), buyer:profiles!buyer_id(id, full_name, phone, avatar_url, city), driver:driver_profiles(*, profile:profiles(id, full_name, phone, avatar_url, city))')
+    .in('status', ['accepted', 'in_progress'])
+    .order('updated_at', { ascending: false });
+  if (error) console.error('getActiveDeliveriesForAdmin:', error.message);
+  return (data as unknown as DeliveryRequest[]) ?? [];
+}
+
+export function subscribeToDriverLocation(deliveryId: string, callback: (location: DriverLocation) => void): () => void {
+  if (useDemo) return () => {};
+  const sub = supabase.channel(`delivery-location-${deliveryId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'driver_locations', filter: `delivery_id=eq.${deliveryId}` }, (payload) => callback(payload.new as DriverLocation)).subscribe();
+  return () => { supabase.removeChannel(sub); };
+}
+
+export function subscribeToDeliveryEvents(deliveryId: string, callback: (event: DeliveryEvent) => void): () => void {
+  if (useDemo) return () => {};
+  const sub = supabase.channel(`delivery-events-${deliveryId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'delivery_events', filter: `delivery_id=eq.${deliveryId}` }, (payload) => callback(payload.new as DeliveryEvent)).subscribe();
+  return () => { supabase.removeChannel(sub); };
+}
+
+export function subscribeToDeliveryMessages(deliveryId: string, callback: (message: DeliveryMessage) => void): () => void {
+  if (useDemo) return () => {};
+  const sub = supabase.channel(`delivery-messages-${deliveryId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_messages', filter: `delivery_id=eq.${deliveryId}` }, (payload) => callback(payload.new as DeliveryMessage)).subscribe();
+  return () => { supabase.removeChannel(sub); };
+}
+
+export function subscribeToDeliveryIncidents(deliveryId: string, callback: (incident: DeliveryIncident) => void): () => void {
+  if (useDemo) return () => {};
+  const sub = supabase.channel(`delivery-incidents-${deliveryId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_incidents', filter: `delivery_id=eq.${deliveryId}` }, (payload) => callback(payload.new as DeliveryIncident)).subscribe();
+  return () => { supabase.removeChannel(sub); };
+}
+
+// ============================================================
+// 9. Souscription temps réel (Supabase uniquement — no-op en démo)
 // ============================================================
 export function subscribeToDeliveryUpdates(
   deliveryId: string,
@@ -1045,8 +1219,9 @@ export function subscribeToDeliveryUpdates(
         table: 'delivery_requests',
         filter: `id=eq.${deliveryId}`,
       },
-      (payload) => {
-        callback(payload.new as DeliveryRequest);
+      async () => {
+        const delivery = await getDeliveryById(deliveryId);
+        if (delivery) callback(delivery);
       },
     )
     .subscribe();

@@ -1,67 +1,65 @@
-// Palette de couleurs Boutikplus — langage « Fil de Faso »
-// Inspirations : tissage Faso Dan Fani, wax tamponné, karité (beige chaud),
-// fil de couture comme motif d'unité. Tons chauds et crème, corail "piment
-// de Faso" en primaire, accents profonds pour l'ancrage premium.
-// Objectif : un système chaleureux et premium, signature difficile à
-// reproduire par une IA générique car cohérent et culturellement ancré.
-//
-// NOTE 2026-08 : La nuance de blanc "Fil de Faso" (#FFF8F2 beige karité)
-// est PRESERVÉE intégralement — elle est la signature chromatique de la
-// marque. Seul le menu inférieur adopte un comportement flottant (non
-// statique) inspiré de Pinduoduo, sans modifier la palette.
-// Le rouge promo #E02020 est ajouté comme accent fonctionnel pour les
-// badges prix promos (sans toucher au blanc karité).
-//
-// Marqueur stéganographique BTIK_BRAND :
-//   __BTIK_BRAND__ = d31b882e7d713385-322b2991bedbac05-337bc219-OWNER
-// (preuve de propriété DICKO Christ Steve — voir src/lib/ownership.ts)
 export const __BTIK_BRAND__ = 'd31b882e7d713385-322b2991bedbac05-337bc219-OWNER';
 
+const semantic = {
+  success: { surface: '#EAF7EF', text: '#17633A', border: '#A8D9B9', solid: '#238653' },
+  warning: { surface: '#FFF4D6', text: '#744B00', border: '#E8C56B', solid: '#C98512' },
+  danger: { surface: '#FDEBE7', text: '#8E2F26', border: '#E5AAA1', solid: '#C84A3D' },
+  info: { surface: '#E8F3F5', text: '#245F68', border: '#A7CDD3', solid: '#397F89' },
+} as const;
+
 export const colors = {
-  // Primaires — corail "piment de Faso"
-  primary: '#FF8A5C',
-  primaryLight: '#FFB089',
-  primaryDark: '#E66A3A',
-  primaryDeep: '#C0491E', // accent profond pour CTAs premium, ancrage terreaux
+  primary: '#D9683A',
+  primaryLight: '#F2A276',
+  primaryDark: '#B84A26',
+  primaryDeep: '#85351F',
+  secondary: '#70604B',
+  secondaryLight: '#A99A82',
+  secondaryDeep: '#43382C',
 
-  // Secondaire — violet "indigo de tissage"
-  secondary: '#8B6FE0',
-  secondaryLight: '#B3A0F0',
-  secondaryDeep: '#5B45A8', // contrastes textes sur fond clair
-
-  // Fonds — tons karité (beige chaleureux, évite le gris froid)
-  // ⚠️ Nuance de blanc "Fil de Faso" préservée — ne pas modifier.
   background: '#FFF8F2',
-  surface: '#FFFFFF',
-  surfaceAlt: '#FFF1E8',
-  surfaceDeep: '#F7E4D2', // crème plus saturé pour sections alternées (rayure Fani)
+  surface: '#FFFCF8',
+  surfaceAlt: '#F9EDE1',
+  surfaceDeep: '#EFDCC8',
+  surfaceElevated: '#FFFFFF',
+  surfaceSunken: '#F4E7DA',
 
-  // Texte — encre profonde pour titres hero, brun-noir doux pour le corps
-  ink: '#1F1828',
-  text: '#2A2230',
-  textMuted: '#8A8088',
+  ink: '#241B16',
+  text: '#352A24',
+  textMuted: '#766A62',
+  textSubtle: '#9A8D84',
   textInverse: '#FFFFFF',
 
-  // Fonctionnels — tons adoucis
-  success: '#16B364',
-  danger: '#E5484D',
-  warning: '#F5A623',
-  info: '#3DA9FC',
+  success: semantic.success.solid,
+  danger: semantic.danger.solid,
+  warning: semantic.warning.solid,
+  info: semantic.info.solid,
+  successSurface: semantic.success.surface,
+  successText: semantic.success.text,
+  successBorder: semantic.success.border,
+  warningSurface: semantic.warning.surface,
+  warningText: semantic.warning.text,
+  warningBorder: semantic.warning.border,
+  dangerSurface: semantic.danger.surface,
+  dangerText: semantic.danger.text,
+  dangerBorder: semantic.danger.border,
+  infoSurface: semantic.info.surface,
+  infoText: semantic.info.text,
+  infoBorder: semantic.info.border,
+  semantic,
 
-  // Accent promo (rouge vif pour badges prix promos) — n'affecte pas le blanc
-  promo: '#E02020',
-
-  // Opérateurs Mobile Money (couleurs de marque — inchangées)
+  promo: '#C92F2F',
   orangeMoney: '#FF7900',
   moovMoney: '#0066B3',
 
-  // Bordures & fils de couture — teintes chaudes pâles
-  border: '#F0E6DD',
-  borderLight: '#FAF2EB',
-  stitch: '#FFB089', // couleur du "fil" visible des dividers / focus rings
-  stitchDeep: '#E66A3A', // fil accentué
-  overlay: 'rgba(42, 34, 48, 0.5)',
-  shadow: 'rgba(255, 138, 92, 0.12)',
+  border: '#DDCFC2',
+  borderLight: '#EEE3D8',
+  borderStrong: '#B9A89A',
+  stitch: '#E69A70',
+  stitchDeep: '#B84A26',
+  focusRing: '#246B67',
+  focusRingSoft: 'rgba(36,107,103,0.20)',
+  overlay: 'rgba(36,27,22,0.56)',
+  shadow: 'rgba(63,45,34,0.12)',
 } as const;
 
 export type AppColors = typeof colors;

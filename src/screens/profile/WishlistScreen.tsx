@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, Pressable, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -7,13 +7,16 @@ import { useFavorites } from '@/context/FavoriteContext';
 import { formatFCFA } from '@/lib/format';
 import { ThreadDivider } from '@/components/ui/ThreadDivider';
 import { StampBadge } from '@/components/ui/StampBadge';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface WishlistScreenProps {
   navigation: { goBack: () => void; navigate: (name: string, params?: any) => void };
 }
 
 export function WishlistScreen({ navigation }: WishlistScreenProps) {
-  const { wishlist, loadingWishlist, isFav, toggleFavorite, refreshWishlist } = useFavorites();
+  const { wishlist, loadingWishlist, isFav, toggleFavorite } = useFavorites();
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
 
   const handleRemove = (id: string) => {
     toggleFavorite(id);
@@ -39,7 +42,7 @@ export function WishlistScreen({ navigation }: WishlistScreenProps) {
       {/* Fil de Faso — couture signature */}
       <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scroll, wide && styles.wideScroll]} showsVerticalScrollIndicator={false}>
         {loadingWishlist ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -92,6 +95,8 @@ export function WishlistScreen({ navigation }: WishlistScreenProps) {
                     style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.7 }]}
                     onPress={() => handleRemove(product.id)}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Retirer ${product.name} des favoris`}
                   >
                     <Feather name="trash-2" size={14} color={colors.danger} />
                     <Text style={styles.removeText}>Retirer</Text>
@@ -121,6 +126,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
   titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
   scroll: { padding: spacing.lg, paddingTop: 0 },
+  wideScroll: { width: '100%', maxWidth: 980, alignSelf: 'center' },
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxxl },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxxl, gap: spacing.md },
   emptyTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, textAlign: 'center', marginTop: spacing.lg },

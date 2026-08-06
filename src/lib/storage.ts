@@ -60,6 +60,11 @@ export function validateFile(file: { size?: number; type?: string; uri?: string 
   return null;
 }
 
+/** Détecte les URI de médias qui doivent encore être téléversées. */
+export const isLocalMediaUri = (uri?: string | null): boolean => {
+  return !!uri && /^(file|content|data|blob):/i.test(uri);
+};
+
 /** Détecte si une URI est une URI blob générée par expo-image-manipulator/expo-image-picker sur web */
 export const isBlobUri = (uri?: string | null): boolean => {
   return !!uri && uri.startsWith('blob:');
@@ -241,25 +246,13 @@ export const uploadImage = async (
     .slice(2, 8)}.${ext}`;
   const path = `${userId}/${fileName}`;
 
-  const formData = new FormData();
-
-  // Sur web, les navigateurs ne supportent pas le pattern RN { uri, name, type }.
-  // Il faut convertir les data:/blob: URIs en vrais Blob avant FormData.append.
-  if (Platform.OS === 'web' && (localUri.startsWith('data:') || localUri.startsWith('blob:'))) {
-    try {
-      const resp = await fetch(localUri);
-      const blob = await resp.blob();
-      formData.append('file', blob, fileName);
-    } catch (e) {
-      logger.error('uploadImage: data→blob conversion failed', e);
-      throw new UploadError('Conversion d\'image impossible sur web', 'UPLOAD_FAILED');
-    }
-  } else {
-    formData.append('file', {
-      uri: localUri,
-      name: fileName,
-      type: 'image/jpeg',
-    } as unknown as Blob);
+  let body: Blob | ArrayBuffer;
+  try {
+    const response = await fetch(localUri);
+    body = Platform.OS === 'web' ? await response.blob() : await response.arrayBuffer();
+  } catch (e) {
+    logger.error('uploadImage: conversion binaire impossible', e);
+    throw new UploadError('Conversion de l\'image impossible', 'UPLOAD_FAILED');
   }
 
   // Timeout pour éviter de bloquer indéfiniment (réseaux burkinabè instables)
@@ -276,7 +269,7 @@ export const uploadImage = async (
     const uploadPromise = (async () => {
       const { data, error } = await supabase.storage
         .from(bucket)
-        .upload(path, formData, {
+        .upload(path, body, {
           contentType: 'image/jpeg',
           upsert: false,
           ...(onProgress ? {
@@ -354,8 +347,7 @@ export const uploadMultipleImages = async (
 ): Promise<UploadResult[]> => {
   const results: UploadResult[] = [];
   for (const uri of localUris) {
-    const compressed = await compressImage(uri);
-    const uploaded = await uploadImage(bucket, compressed.uri, filePrefix);
+    const uploaded = await uploadImage(bucket, uri, filePrefix);
     if (uploaded) results.push(uploaded);
   }
   return results;

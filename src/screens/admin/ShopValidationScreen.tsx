@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert, Modal, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, Alert, Modal, ScrollView, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -54,15 +54,14 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
   };
 
   const handleApprove = async (shop: Shop) => {
-    Alert.alert('Approuver la boutique', `Valider "${shop.name}" et la rendre visible sur la marketplace ?`, [
+    Alert.alert('Approuver', `Valider "${shop.name}" ?`, [
       { text: 'Annuler' },
-      { text: 'Approuver ✓', onPress: async () => {
+      { text: 'Approuver', onPress: async () => {
         setBusy(shop.id);
         const { error } = await approveShop(shop.id);
         setBusy(null);
         if (error) Alert.alert('Erreur', error);
         else {
-          Alert.alert('Validée ✓', 'La boutique est maintenant visible sur la marketplace. Le vendeur a été notifié.');
           setAllShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, status: 'active' as const } : s));
         }
       } },
@@ -85,45 +84,30 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
     setBusy(null);
     if (error) Alert.alert('Erreur', error);
     else {
-      Alert.alert('Refusée', `La boutique "${rejectModal.name}" a été refusée. Le vendeur sera notifié avec le motif.`);
-      setAllShops((prev) => prev.filter((s) => s.id !== rejectModal.id));
+      setAllShops((prev) => prev.map((s) => s.id === rejectModal.id ? { ...s, status: 'rejected' as const } : s));
     }
     setRejectModal(null);
   };
 
   const handleToggleVerified = async (shop: Shop) => {
     const nextVerified = !shop.is_verified;
-    Alert.alert(
-      nextVerified ? 'Attribuer le badge "Vérifiée" ?' : 'Retirer le badge "Vérifiée" ?',
-      `"${shop.name}" ${nextVerified ? 'recevra' : 'perdra'} le badge de boutique vérifiée.`,
-      [
-        { text: 'Annuler' },
-        {
-          text: nextVerified ? 'Attribuer ✓' : 'Retirer',
-          style: nextVerified ? 'default' : 'destructive',
-          onPress: async () => {
-            setBusy(shop.id);
-            const { error } = await toggleShopVerified(shop.id, nextVerified);
-            setBusy(null);
-            if (error) Alert.alert('Erreur', error);
-            else {
-              setAllShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, is_verified: nextVerified } : s));
-              Alert.alert('Terminé', `Badge ${nextVerified ? 'attribué' : 'retiré'}.`);
-            }
-          },
-        },
-      ],
-    );
+    setBusy(shop.id);
+    const { error } = await toggleShopVerified(shop.id, nextVerified);
+    setBusy(null);
+    if (error) Alert.alert('Erreur', error);
+    else {
+      setAllShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, is_verified: nextVerified } : s));
+    }
   };
 
   const handleDelete = (shop: Shop) => {
     Alert.alert(
       'Supprimer la boutique',
-      `⚠️ Cette action est irréversible.\n\n"${shop.name}" et tous ses produits, images et données associées seront définitivement supprimés.`,
+      `⚠️ "${shop.name}" et tous ses produits seront supprimés définitivement.`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
-          text: 'Supprimer définitivement',
+          text: 'Supprimer',
           style: 'destructive',
           onPress: async () => {
             setBusy(shop.id);
@@ -131,7 +115,6 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
             setBusy(null);
             if (error) Alert.alert('Erreur', error);
             else {
-              Alert.alert('Supprimée', `"${shop.name}" a été supprimée définitivement.`);
               setAllShops((prev) => prev.filter((s) => s.id !== shop.id));
             }
           },
@@ -151,7 +134,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
       </View>
 
       {/* Onglets de filtre */}
-      <View style={styles.filterRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
         {([
           { key: 'all' as FilterTab, label: 'Toutes', count: counts.all },
           { key: 'pending' as FilterTab, label: 'En attente', count: counts.pending },
@@ -168,7 +151,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
             </Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       {loading ? (
         <LoadingSpinner />
@@ -241,12 +224,30 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
                       loading={busy === shop.id}
                     />
                   </>
+                ) : shop.status !== 'rejected' ? (
+                  <Button
+                    label="Refuser"
+                    variant="outline"
+                    onPress={() => handleOpenReject(shop)}
+                    style={{ flex: 1 }}
+                    size="sm"
+                    loading={busy === shop.id}
+                  />
+                ) : null}
+                {shop.status === 'rejected' ? (
+                  <Button
+                    label="Approuver"
+                    onPress={() => handleApprove(shop)}
+                    style={{ flex: 1 }}
+                    size="sm"
+                    loading={busy === shop.id}
+                  />
                 ) : null}
                 <Button
                   label={shop.is_verified ? 'Retirer badge' : 'Badge vérifiée'}
                   variant="outline"
                   onPress={() => handleToggleVerified(shop)}
-                  style={{ flex: shop.status === 'pending' ? 1.2 : 1, marginHorizontal: shop.status === 'pending' ? 0 : 0 }}
+                  style={{ flex: 1, marginLeft: spacing.sm }}
                   size="sm"
                   loading={busy === shop.id}
                 />
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
   shopMeta: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
   shopDate: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
   shopDesc: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted, lineHeight: 20, marginBottom: spacing.sm },
-  payRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: '#E6F7EE', borderRadius: radius.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.success + '18', borderRadius: radius.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
   payText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.success, fontWeight: typography.weights.medium },
   actionRow: { flexDirection: 'row', marginTop: spacing.sm },
   deleteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, marginTop: spacing.md, paddingVertical: spacing.xs },

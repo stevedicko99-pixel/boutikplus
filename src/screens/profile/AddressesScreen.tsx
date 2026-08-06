@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import * as Location from 'expo-location';
 import { StyleSheet, View, Text, FlatList, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -10,7 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { CITY_LIST } from '@/constants/cities';
+import { CITY_LIST, getZoneById, getZonesForCity } from '@/constants/cities';
 import type { DeliveryAddress } from '@/types/models';
 
 interface AddressesScreenProps {
@@ -23,7 +24,8 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<DeliveryAddress | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ city: CITY_LIST[0], district: '', instructions: '', phone: profile?.phone ?? '' });
+  const emptyForm = () => ({ city: CITY_LIST[0], zoneId: '', district: '', landmark: '', instructions: '', phone: profile?.phone ?? '', latitude: null as number | null, longitude: null as number | null });
+  const [form, setForm] = useState(emptyForm);
 
   const load = useCallback(async () => {
     const data = await getAddresses(profile?.id ?? 'demo-buyer');
@@ -33,15 +35,30 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleSave = async () => {
-    if (!form.district || !form.phone) {
-      Alert.alert('Erreur', 'Quartier et téléphone obligatoires');
+  const useCurrentLocation = async () => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted') {
+      Alert.alert('Localisation refusée', 'Autorisez la localisation pour utiliser votre position.');
       return;
     }
+    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    setForm((current) => ({ ...current, latitude: location.coords.latitude, longitude: location.coords.longitude }));
+  };
+
+  const handleSave = async () => {
+    if (!form.zoneId || !form.landmark.trim() || !form.phone) {
+      Alert.alert('Erreur', 'Zone, repère et téléphone obligatoires');
+      return;
+    }
+    const selectedZone = getZoneById(form.zoneId);
     await saveAddress({
       city: form.city,
-      district: form.district,
-      instructions: form.instructions,
+      zone_id: form.zoneId,
+      latitude: form.latitude,
+      longitude: form.longitude,
+      landmark: form.landmark.trim(),
+      district: form.district.trim() || selectedZone?.name || form.landmark.trim(),
+      instructions: form.instructions || form.landmark.trim(),
       contact_phone: form.phone,
       id: editing?.id,
       user_id: profile?.id ?? 'demo-buyer',
@@ -49,13 +66,13 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
     });
     setShowForm(false);
     setEditing(null);
-    setForm({ city: CITY_LIST[0], district: '', instructions: '', phone: profile?.phone ?? '' });
+    setForm(emptyForm());
     await load();
   };
 
   const handleEdit = (addr: DeliveryAddress) => {
     setEditing(addr);
-    setForm({ city: addr.city, district: addr.district, instructions: addr.instructions ?? '', phone: addr.contact_phone });
+    setForm({ city: addr.city, zoneId: addr.zone_id ?? '', district: addr.district, landmark: addr.landmark ?? addr.instructions ?? '', instructions: addr.instructions ?? '', phone: addr.contact_phone, latitude: addr.latitude, longitude: addr.longitude });
     setShowForm(true);
   };
 
@@ -80,15 +97,13 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
         <Card style={styles.formCard}>
           <Text style={styles.formTitle}>{editing ? 'Modifier l\'adresse' : 'Nouvelle adresse'}</Text>
           <Text style={styles.label}>Ville</Text>
-          <View style={styles.cityGrid}>
-            {CITY_LIST.slice(0, 6).map((c) => (
-              <Pressable key={c} style={[styles.cityChip, form.city === c && styles.cityChipActive]} onPress={() => setForm({ ...form, city: c })}>
-                <Text style={[styles.cityChipText, form.city === c && styles.cityChipTextActive]}>{c}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Input label="Quartier *" value={form.district} onChangeText={(v) => setForm({ ...form, district: v })} placeholder="Ex: Gounghin" icon="home" />
-          <Input label="Indications" value={form.instructions} onChangeText={(v) => setForm({ ...form, instructions: v })} placeholder="Ex: près de la pharmacie" multiline numberOfLines={2} />
+          <ChoiceChips options={CITY_LIST} value={form.city} onChange={(city) => setForm({ ...form, city, zoneId: '' })} />
+          <Text style={styles.label}>Zone *</Text>
+          <ChoiceChips options={getZonesForCity(form.city).map((zone) => ({ id: zone.id, label: zone.name }))} value={form.zoneId} onChange={(zoneId) => setForm({ ...form, zoneId })} />
+          <Input label="Repère *" value={form.landmark} onChangeText={(v) => setForm({ ...form, landmark: v })} placeholder="Ex: portail bleu près de la pharmacie" icon="map-pin" />
+          <Input label="Quartier (compatibilité)" value={form.district} onChangeText={(v) => setForm({ ...form, district: v })} placeholder="Renseigné depuis la zone si vide" icon="home" />
+          <Input label="Indications" value={form.instructions} onChangeText={(v) => setForm({ ...form, instructions: v })} placeholder="Instructions complémentaires" multiline numberOfLines={2} />
+          <Pressable style={styles.locationButton} onPress={useCurrentLocation}><Feather name="crosshair" size={16} color={colors.primary} /><Text style={styles.locationButtonText}>{form.latitude != null ? 'Position GPS enregistrée' : 'Utiliser ma position'}</Text></Pressable>
           <Input label="Téléphone *" value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" icon="phone" />
           <View style={styles.formActions}>
             <Button label="Annuler" variant="ghost" onPress={() => { setShowForm(false); setEditing(null); }} style={{ flex: 1 }} />
@@ -107,7 +122,7 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListFooterComponent={!showForm ? (
-            <Pressable style={styles.addBtn} onPress={() => { setEditing(null); setForm({ city: CITY_LIST[0], district: '', instructions: '', phone: profile?.phone ?? '' }); setShowForm(true); }}>
+            <Pressable style={styles.addBtn} onPress={() => { setEditing(null); setForm(emptyForm()); setShowForm(true); }}>
               <Feather name="plus" size={18} color={colors.primary} />
               <Text style={styles.addBtnText}>Ajouter une adresse</Text>
             </Pressable>
@@ -141,6 +156,14 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
   );
 }
 
+function ChoiceChips({ options, value, onChange }: { options: readonly (string | { id: string; label: string })[]; value: string; onChange: (value: string) => void }) {
+  return <View style={styles.cityGrid}>{options.map((option) => {
+    const id = typeof option === 'string' ? option : option.id;
+    const label = typeof option === 'string' ? option : option.label;
+    return <Pressable key={id} style={[styles.cityChip, value === id && styles.cityChipActive]} onPress={() => onChange(id)}><Text style={[styles.cityChipText, value === id && styles.cityChipTextActive]}>{label}</Text></Pressable>;
+  })}</View>;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
@@ -153,6 +176,8 @@ const styles = StyleSheet.create({
   cityChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   cityChipText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.text },
   cityChipTextActive: { color: colors.textInverse, fontWeight: typography.weights.semibold },
+  locationButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.md, marginBottom: spacing.md },
+  locationButtonText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.primary, fontWeight: typography.weights.semibold },
   formActions: { flexDirection: 'row', marginTop: spacing.md },
   list: { padding: spacing.lg, paddingTop: 0 },
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.md, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radius.lg, marginTop: spacing.sm },

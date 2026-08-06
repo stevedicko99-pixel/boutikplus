@@ -40,6 +40,7 @@ export function MediaCarousel({
 
   const goToIndex = (index: number) => {
     if (index < 0 || index >= media.length) return;
+    setActiveIndex(index);
     scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
     // Petit effet de fondu lors du changement
     Animated.sequence([
@@ -77,29 +78,32 @@ export function MediaCarousel({
           scrollEventThrottle={16}
           decelerationRate="fast"
         >
-          {media.map((item, i) => (
-            <View key={i} style={{ width: SCREEN_WIDTH, height }}>
-              {item.kind === 'image' ? (
-                <Image
-                  source={{ uri: item.uri }}
-                  style={{ width: '100%', height: '100%' }}
-                  contentFit="cover"
-                  transition={200}
-                  cachePolicy="memory-disk"
-                />
-              ) : (
-                <View style={styles.videoPage}>
-                  <ProductVideoCard video={item.video} compact />
-                </View>
-              )}
-              {item.kind === 'video' ? (
-                <View style={styles.videoTag}>
-                  <Feather name="play-circle" size={11} color={colors.textInverse} />
-                  <Text style={styles.videoTagText}>Vidéo</Text>
-                </View>
-              ) : null}
-            </View>
-          ))}
+          {media.map((item, i) => {
+            const shouldRender = Math.abs(i - activeIndex) <= 1;
+            return (
+              <View key={i} style={{ width: SCREEN_WIDTH, height }}>
+                {shouldRender ? item.kind === 'image' ? (
+                  <Image
+                    source={{ uri: item.uri }}
+                    style={{ width: '100%', height: '100%' }}
+                    contentFit="cover"
+                    transition={200}
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View style={styles.videoPage}>
+                    <ProductVideoCard video={item.video} compact />
+                  </View>
+                ) : null}
+                {shouldRender && item.kind === 'video' ? (
+                  <View style={styles.videoTag}>
+                    <Feather name="play-circle" size={11} color={colors.textInverse} />
+                    <Text style={styles.videoTagText}>Vidéo</Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
         </ScrollView>
       </Animated.View>
 

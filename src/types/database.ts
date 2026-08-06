@@ -242,12 +242,18 @@ export interface Database {
       delivery_requests: {
         Row: {
           id: string;
+          order_id: string | null;
+          buyer_id: string | null;
           seller_id: string;
           driver_id: string | null;
           pickup_address: string;
           pickup_city: string;
           destination_address: string;
           destination_city: string;
+          pickup_lat: number | null;
+          pickup_lng: number | null;
+          destination_lat: number | null;
+          destination_lng: number | null;
           package_weight: number;
           package_length: number;
           package_width: number;
@@ -270,15 +276,30 @@ export interface Database {
           created_at: string;
           updated_at: string;
           accepted_at: string | null;
+          started_at: string | null;
+          estimated_arrival_at: string | null;
+          last_location_at: string | null;
           delivered_at: string | null;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          refund_amount: number | null;
+          refund_reason: string | null;
+          refund_reference: string | null;
+          refunded_at: string | null;
         };
         Insert: {
+          order_id?: string | null;
+          buyer_id?: string | null;
           seller_id: string;
           driver_id?: string | null;
           pickup_address: string;
           pickup_city: string;
           destination_address: string;
           destination_city: string;
+          pickup_lat?: number | null;
+          pickup_lng?: number | null;
+          destination_lat?: number | null;
+          destination_lng?: number | null;
           package_weight: number;
           package_length: number;
           package_width: number;
@@ -298,16 +319,39 @@ export interface Database {
           cancellation_reason?: string | null;
           driver_offer_price?: number | null;
           price_set_by?: 'seller' | 'driver';
+          estimated_arrival_at?: string | null;
         };
         Update: Partial<Database['public']['Tables']['delivery_requests']['Insert']> & {
           // Champs gérés durant le cycle de vie (non présents dans Insert)
           accepted_at?: string | null;
+          started_at?: string | null;
+          last_location_at?: string | null;
           delivered_at?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          refund_amount?: number | null;
+          refund_reason?: string | null;
+          refund_reference?: string | null;
+          refunded_at?: string | null;
           updated_at?: string;
           driver_offer_price?: number | null;
           price_set_by?: 'seller' | 'driver';
         };
         Relationships: [
+          {
+            foreignKeyName: 'delivery_requests_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'delivery_requests_buyer_id_fkey';
+            columns: ['buyer_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
           {
             foreignKeyName: 'delivery_requests_seller_id_fkey';
             columns: ['seller_id'];
@@ -322,6 +366,74 @@ export interface Database {
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
+        ];
+      };
+      driver_locations: {
+        Row: {
+          id: string; delivery_id: string; driver_id: string; latitude: number; longitude: number;
+          accuracy_m: number | null; heading: number | null; speed_mps: number | null;
+          recorded_at: string; received_at: string;
+        };
+        Insert: {
+          delivery_id: string; driver_id: string; latitude: number; longitude: number;
+          accuracy_m?: number | null; heading?: number | null; speed_mps?: number | null;
+          recorded_at: string; received_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['driver_locations']['Insert']>;
+        Relationships: [
+          { foreignKeyName: 'driver_locations_delivery_id_fkey'; columns: ['delivery_id']; isOneToOne: true; referencedRelation: 'delivery_requests'; referencedColumns: ['id'] },
+          { foreignKeyName: 'driver_locations_driver_id_fkey'; columns: ['driver_id']; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ['id'] },
+        ];
+      };
+      delivery_events: {
+        Row: {
+          id: string; delivery_id: string; event_type: string; actor_id: string | null;
+          from_status: import('@/types/models').DeliveryStatus | null;
+          to_status: import('@/types/models').DeliveryStatus | null;
+          metadata: Record<string, unknown>; created_at: string;
+        };
+        Insert: {
+          delivery_id: string; event_type: string; actor_id?: string | null;
+          from_status?: import('@/types/models').DeliveryStatus | null;
+          to_status?: import('@/types/models').DeliveryStatus | null;
+          metadata?: Record<string, unknown>; created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['delivery_events']['Insert']>;
+        Relationships: [
+          { foreignKeyName: 'delivery_events_delivery_id_fkey'; columns: ['delivery_id']; isOneToOne: false; referencedRelation: 'delivery_requests'; referencedColumns: ['id'] },
+          { foreignKeyName: 'delivery_events_actor_id_fkey'; columns: ['actor_id']; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ['id'] },
+        ];
+      };
+      delivery_incidents: {
+        Row: {
+          id: string; delivery_id: string; reported_by: string; category: string; description: string;
+          status: import('@/types/models').DeliveryIncidentStatus; assigned_admin_id: string | null;
+          resolution: string | null; resolved_at: string | null; created_at: string; updated_at: string;
+        };
+        Insert: {
+          delivery_id: string; reported_by: string; category: string; description: string;
+          status?: import('@/types/models').DeliveryIncidentStatus; assigned_admin_id?: string | null;
+          resolution?: string | null; resolved_at?: string | null; created_at?: string; updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['delivery_incidents']['Insert']>;
+        Relationships: [
+          { foreignKeyName: 'delivery_incidents_delivery_id_fkey'; columns: ['delivery_id']; isOneToOne: false; referencedRelation: 'delivery_requests'; referencedColumns: ['id'] },
+          { foreignKeyName: 'delivery_incidents_reported_by_fkey'; columns: ['reported_by']; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ['id'] },
+          { foreignKeyName: 'delivery_incidents_assigned_admin_id_fkey'; columns: ['assigned_admin_id']; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ['id'] },
+        ];
+      };
+      delivery_messages: {
+        Row: {
+          id: string; delivery_id: string; sender_id: string; content: string;
+          read_at: string | null; created_at: string;
+        };
+        Insert: {
+          delivery_id: string; sender_id: string; content: string; read_at?: string | null; created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['delivery_messages']['Insert']>;
+        Relationships: [
+          { foreignKeyName: 'delivery_messages_delivery_id_fkey'; columns: ['delivery_id']; isOneToOne: false; referencedRelation: 'delivery_requests'; referencedColumns: ['id'] },
+          { foreignKeyName: 'delivery_messages_sender_id_fkey'; columns: ['sender_id']; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ['id'] },
         ];
       };
       delivery_payments: {
@@ -835,6 +947,10 @@ export interface Database {
         Insert: {
           user_id: string;
           city: string;
+          zone_id?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          landmark?: string | null;
           district: string;
           instructions?: string | null;
           contact_phone: string;
@@ -1252,6 +1368,30 @@ export interface Database {
           price_set_by: string;
           status: string;
         };
+      };
+      transition_delivery: {
+        Args: { p_delivery_id: string; p_action: 'start' | 'deliver' | 'cancel' | 'refund'; p_reason?: string | null };
+        Returns: Database['public']['Tables']['delivery_requests']['Row'];
+      };
+      update_driver_location: {
+        Args: {
+          p_delivery_id: string; p_latitude: number; p_longitude: number;
+          p_accuracy_m?: number | null; p_heading?: number | null; p_speed_mps?: number | null;
+          p_recorded_at?: string;
+        };
+        Returns: Database['public']['Tables']['driver_locations']['Row'];
+      };
+      report_delivery_incident: {
+        Args: { p_delivery_id: string; p_category: string; p_description: string };
+        Returns: Database['public']['Tables']['delivery_incidents']['Row'];
+      };
+      resolve_delivery_incident: {
+        Args: { p_incident_id: string; p_status: 'investigating' | 'resolved' | 'rejected'; p_resolution: string | null; p_assigned_admin_id?: string | null };
+        Returns: Database['public']['Tables']['delivery_incidents']['Row'];
+      };
+      get_delivery_operations_summary: {
+        Args: Record<string, never>;
+        Returns: import('@/types/models').DeliveryOperationsSummary;
       };
       // ─── V6 : comptage de vues produits ───
       increment_product_view: {

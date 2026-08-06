@@ -1,4 +1,5 @@
-import { StyleSheet, View, Text, FlatList, Pressable } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, View, Text, FlatList, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
@@ -10,13 +11,14 @@ import { ThreadDivider } from '@/components/ui/ThreadDivider';
 import { StampBadge } from '@/components/ui/StampBadge';
 import { formatFCFA } from '@/lib/format';
 import type { CartLine, CartSellerGroup } from '@/context/CartContext';
+import type { VariantInfo } from '@/types/models';
 
 interface CartScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void };
 }
 
 export function CartScreen({ navigation }: CartScreenProps) {
-  const { sellerGroups, total, count, updateQuantity, removeItem, clear } = useCart();
+  const { sellerGroups, total, count, updateQuantity, removeItem, updateVariant, clear } = useCart();
 
   if (count === 0) {
     return (
@@ -52,6 +54,7 @@ export function CartScreen({ navigation }: CartScreenProps) {
             group={group}
             onQty={updateQuantity}
             onRemove={removeItem}
+            onVariant={updateVariant}
             onShopPress={(shopId) => navigation.navigate('ShopDetail', { shopId })}
           />
         )}
@@ -73,11 +76,13 @@ function SellerGroup({
   group,
   onQty,
   onRemove,
+  onVariant,
   onShopPress,
 }: {
   group: CartSellerGroup;
   onQty: (productId: string, qty: number) => void;
   onRemove: (productId: string) => void;
+  onVariant: (productId: string, variant: VariantInfo) => void;
   onShopPress: (shopId: string) => void;
 }) {
   return (
@@ -87,8 +92,8 @@ function SellerGroup({
         <Text style={styles.groupShopName} numberOfLines={1}>{group.shop?.name ?? 'Boutique'}</Text>
         <Feather name="chevron-right" size={16} color={colors.textMuted} />
       </Pressable>
-      {group.lines.map((line) => (
-        <CartLineItem key={line.product.id} line={line} onQty={onQty} onRemove={onRemove} />
+      {group.lines.map((line, idx) => (
+        <CartLineItem key={line.product.id + '-' + idx} line={line} onQty={onQty} onRemove={onRemove} onVariant={onVariant} />
       ))}
       <View style={styles.groupFoot}>
         <Text style={styles.groupFootLabel}>Sous-total</Text>
@@ -98,8 +103,25 @@ function SellerGroup({
   );
 }
 
-function CartLineItem({ line, onQty, onRemove }: { line: CartLine; onQty: (id: string, q: number) => void; onRemove: (id: string) => void }) {
+function CartLineItem({ line, onQty, onRemove, onVariant }: {
+  line: CartLine;
+  onQty: (id: string, q: number) => void;
+  onRemove: (id: string) => void;
+  onVariant: (id: string, v: VariantInfo) => void;
+}) {
   const img = line.product.images?.[0]?.image_url;
+  const [model, setModel] = useState(line.variant_info?.model ?? '');
+  const [color, setColor] = useState(line.variant_info?.color ?? '');
+
+  const handleModelChange = (v: string) => {
+    setModel(v);
+    onVariant(line.product.id, { model: v || undefined, color: color || undefined });
+  };
+  const handleColorChange = (v: string) => {
+    setColor(v);
+    onVariant(line.product.id, { model: model || undefined, color: v || undefined });
+  };
+
   return (
     <View style={styles.line}>
       {img ? (
@@ -110,6 +132,29 @@ function CartLineItem({ line, onQty, onRemove }: { line: CartLine; onQty: (id: s
       <View style={styles.lineInfo}>
         <Text style={styles.lineName} numberOfLines={2}>{line.product.name}</Text>
         <Text style={styles.linePrice}>{formatFCFA(line.product.price)}</Text>
+        {/* Sélection modèle / couleur (style Pinduoduo) */}
+        <View style={styles.variantRow}>
+          <View style={styles.variantInput}>
+            <Text style={styles.variantLabel}>Modèle</Text>
+            <TextInput
+              style={styles.variantField}
+              value={model}
+              onChangeText={handleModelChange}
+              placeholder="—"
+              placeholderTextColor={colors.textMuted}
+            />
+          </View>
+          <View style={styles.variantInput}>
+            <Text style={styles.variantLabel}>Couleur</Text>
+            <TextInput
+              style={styles.variantField}
+              value={color}
+              onChangeText={handleColorChange}
+              placeholder="—"
+              placeholderTextColor={colors.textMuted}
+            />
+          </View>
+        </View>
         <View style={styles.lineControls}>
           <View style={styles.qtyControl}>
             <Pressable style={styles.qtyBtn} onPress={() => onQty(line.product.id, line.quantity - 1)}>
@@ -145,7 +190,11 @@ const styles = StyleSheet.create({
   thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   lineInfo: { flex: 1 },
   lineName: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.medium, color: colors.text, marginBottom: 4 },
-  linePrice: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.primary, marginBottom: spacing.sm },
+  linePrice: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.primary, marginBottom: spacing.xs },
+  variantRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xs },
+  variantInput: { flex: 1 },
+  variantLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginBottom: 2 },
+  variantField: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.text, borderWidth: 1, borderColor: colors.borderLight, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 4 },
   lineControls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   qtyControl: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: spacing.sm },
   qtyBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },

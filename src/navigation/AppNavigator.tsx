@@ -37,6 +37,7 @@ import { DiscountCodeManagementScreen } from '@/screens/seller/DiscountCodeManag
 import { AdminDashboardScreen } from '@/screens/admin/AdminDashboardScreen';
 import { ShopValidationScreen } from '@/screens/admin/ShopValidationScreen';
 import { ReportsScreen } from '@/screens/admin/ReportsScreen';
+import { DeliveryOperationsScreen } from '@/screens/admin/DeliveryOperationsScreen';
 import { NotificationCenterScreen } from '@/screens/notifications/NotificationCenterScreen';
 import { ChatbotScreen } from '@/screens/ai/ChatbotScreen';
 import { AIProductAssistantScreen } from '@/screens/ai/AIProductAssistantScreen';
@@ -112,6 +113,8 @@ export type AppStackParamList = {
   CreateDelivery: { driverId?: string; packageWeight?: number; pickupCity?: string } | undefined;
   DeliveryPayment: { deliveryId: string };
   DeliveryTracking: { deliveryId: string };
+  DeliveryChat: { deliveryId: string };
+  DeliveryOperations: undefined;
   SellerDeliveries: undefined;
   DriverDashboard: undefined;
   DriverRegistration: undefined;
@@ -238,6 +241,7 @@ export function AppNavigator() {
       <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
       <Stack.Screen name="ShopValidation" component={ShopValidationScreen} />
       <Stack.Screen name="Reports" component={ReportsScreen} />
+      <Stack.Screen name="DeliveryOperations" component={DeliveryOperationsScreen} />
 
       {/* Studio photo/vidéo & aide */}
       <Stack.Screen name="PhotoStudio" component={PhotoStudioScreen} />

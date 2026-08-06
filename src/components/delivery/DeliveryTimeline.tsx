@@ -116,7 +116,7 @@ function getTimestamp(delivery: DeliveryRequest, status: DeliveryStatus): string
     case 'accepted':
       return delivery.accepted_at ? formatDate(delivery.accepted_at) : null;
     case 'in_progress':
-      return delivery.updated_at ? formatDate(delivery.updated_at) : null;
+      return delivery.started_at ? formatDate(delivery.started_at) : null;
     case 'delivered':
       return delivery.delivered_at ? formatDate(delivery.delivered_at) : null;
     default:

@@ -9,6 +9,7 @@ import {
   uploadImage,
   deleteStorageObject,
   validateFile,
+  isLocalMediaUri,
   UploadError,
   type StorageBucket,
   type UploadProgress,
@@ -122,7 +123,7 @@ export function ImageUploader({
 
   const handleUpload = useCallback(
     async (image: UploadedImage, index: number, currentList: UploadedImage[]) => {
-      if (!image.uri.startsWith('file:') && !image.uri.startsWith('data:') && !image.uri.startsWith('blob:')) {
+      if (!isLocalMediaUri(image.uri)) {
         return; // Déjà uploadé (URL publique)
       }
 

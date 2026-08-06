@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, ScrollView, Alert, Modal } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, ScrollView, Alert, Modal, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -85,7 +85,7 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={navigation.goBack} hitSlop={10}><Feather name="arrow-left" size={24} color={colors.text} /></Pressable>
+        <Pressable onPress={navigation.goBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retour"><Feather name="arrow-left" size={24} color={colors.text} /></Pressable>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Commandes</Text>
           <StampBadge label="Commandes" color={colors.primaryDeep} size="sm" />
@@ -129,6 +129,12 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.itemName} numberOfLines={1}>{it.product?.name ?? 'Produit'}</Text>
                       <Text style={styles.itemQty}>{it.quantity} × {formatFCFA(it.unit_price)}</Text>
+                      {it.variant_info && (it.variant_info.model || it.variant_info.color) ? (
+                        <View style={styles.variantBadge}>
+                          {it.variant_info.model ? <Text style={styles.variantText}>Modèle: <Text style={styles.variantValue}>{it.variant_info.model}</Text></Text> : null}
+                          {it.variant_info.color ? <Text style={styles.variantText}>Couleur: <Text style={styles.variantValue}>{it.variant_info.color}</Text></Text> : null}
+                        </View>
+                      ) : null}
                     </View>
                     <Text style={styles.itemTotal}>{formatFCFA(it.quantity * it.unit_price)}</Text>
                   </View>
@@ -235,6 +241,9 @@ const styles = StyleSheet.create({
   itemThumb: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
   itemName: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.medium, color: colors.text },
   itemQty: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
+  variantBadge: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: 4, backgroundColor: colors.primary + '12', borderRadius: 6, paddingHorizontal: spacing.xs, paddingVertical: 3 },
+  variantText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
+  variantValue: { fontWeight: typography.weights.semibold, color: colors.primary },
   itemTotal: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, marginBottom: spacing.sm },
   totalLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.text },

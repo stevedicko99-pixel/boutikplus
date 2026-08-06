@@ -1,46 +1,54 @@
-// Card — carte signature « Fil de Faso ».
-// Coins pincés (haut-gauche plus rond qu'ailleurs, évoque un pli de tissu),
-// ombre teintée corail en couches (shadows.fani) au lieu d'une bordure dure.
-// Variant `hero` pour les en-têtes premium (ombre plus profonde, accent deep).
-import { StyleSheet, View, Platform, type ViewStyle, type StyleProp } from 'react-native';
+import { Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, radius, spacing, shadows } from '@/theme';
 
-interface CardProps {
+type CardVariant = 'default' | 'elevated' | 'outlined' | 'interactive' | 'hero';
+
+interface CardProps extends Omit<PressableProps, 'style' | 'children'> {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   padded?: boolean;
-  variant?: 'default' | 'hero';
+  variant?: CardVariant;
 }
 
-export function Card({ children, style, padded = true, variant = 'default' }: CardProps) {
+export function Card({ children, style, padded = true, variant = 'default', onPress, disabled, ...pressableProps }: CardProps) {
+  const isInteractive = Boolean(onPress) || variant === 'interactive';
+  const cardStyle = [styles.card, styles[variant], padded && styles.padded, style];
+
+  if (!isInteractive) return <View style={cardStyle}>{children}</View>;
+
   return (
-    <View
-      style={[
-        styles.card,
-        padded && styles.padded,
-        variant === 'hero' ? styles.hero : null,
-        style,
+    <Pressable
+      {...pressableProps}
+      onPress={onPress}
+      disabled={disabled || !onPress}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || !onPress }}
+      style={({ pressed }) => [
+        cardStyle,
+        pressed && onPress && styles.pressed,
+        (disabled || !onPress) && styles.disabled,
       ]}
     >
       {children}
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    // Coins pincés « Fani » : haut-gauche plus rond (pli de tissu)
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: radius.lg,
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: 22,
-    borderWidth: 0,
-    ...shadows.fani,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  hero: {
-    ...shadows.hero,
-  },
+  default: { borderColor: colors.borderLight, ...shadows.subtle },
+  elevated: { backgroundColor: colors.surfaceElevated, ...shadows.fani },
+  outlined: { borderColor: colors.border, backgroundColor: colors.surface },
+  interactive: { borderColor: colors.borderLight, backgroundColor: colors.surfaceElevated, ...shadows.subtle },
+  hero: { backgroundColor: colors.surfaceElevated, borderRadius: radius.xl, borderColor: colors.borderLight, ...shadows.hero },
   padded: { padding: spacing.lg },
+  pressed: { opacity: 0.94, transform: [{ scale: 0.995 }] },
+  focused: { borderColor: colors.focusRing, ...shadows.focus },
+  disabled: { opacity: 0.55 },
 });

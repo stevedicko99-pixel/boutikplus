@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -31,6 +31,8 @@ export function OrdersScreen({ navigation }: OrdersScreenProps) {
   const [orders, setOrders] = useState<(Order & { items: OrderItem[]; shop?: Shop })[]>([]);
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
   const [loading, setLoading] = useState(true);
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
 
   const load = useCallback(async () => {
     const data = await getBuyerOrders(profile?.id ?? 'demo-buyer');
@@ -45,7 +47,7 @@ export function OrdersScreen({ navigation }: OrdersScreenProps) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={navigation.goBack} hitSlop={10}>
+        <Pressable onPress={navigation.goBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retour">
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
         <View style={styles.titleRow}>

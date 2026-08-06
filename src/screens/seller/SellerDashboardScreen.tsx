@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, memo, useMemo } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, FlatList, Animated, Dimensions, Share, Platform } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, FlatList, Animated, Share, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -424,7 +424,7 @@ export function SellerDashboardScreen({ navigation }: SellerDashboardScreenProps
             hitSlop={8}
           >
             <Feather name="grid" size={20} color="#8B5CF6" />
-            <Text style={[styles.fabLabelSecondary, { color: '#8B5CF6' }]}>🤖 Hub IA</Text>
+            <Text style={[styles.fabLabelSecondary, { color: colors.secondary }]}>🤖 Hub IA</Text>
           </Pressable>
         </Animated.View>
         {/* FAB principal : toggle + ajouter produit */}
@@ -528,8 +528,8 @@ const styles = StyleSheet.create({
   statIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   statValue: { fontFamily: typography.fontFamily, fontSize: typography.sizes.title, fontWeight: typography.weights.extrabold, color: colors.ink, letterSpacing: typography.letterSpacings.tight },
   statLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginTop: 2, fontWeight: typography.weights.medium, letterSpacing: typography.letterSpacings.wide },
-  quickGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xl },
-  quickAction: { alignItems: 'center', gap: spacing.xs, flex: 1 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.xl },
+  quickAction: { alignItems: 'center', gap: spacing.xs, width: 92 },
   quickIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   quickLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.text, textAlign: 'center' },
   deliverySection: { marginBottom: spacing.xl },

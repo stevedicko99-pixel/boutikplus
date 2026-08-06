@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius, shadows } from '@/theme';
@@ -234,7 +234,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
         {/* Admin */}
         {profile?.role === 'admin' ? (
-          <Pressable style={styles.adminCard} onPress={() => navigation.navigate('AdminDashboard')}>
+          <Pressable style={styles.adminCard} onPress={() => navigation.navigate('AdminDashboard')} accessibilityRole="button" accessibilityLabel="Ouvrir le panneau d’administration">
             <Feather name="shield" size={22} color={colors.textInverse} />
             <Text style={styles.adminText}>Panneau d'administration</Text>
             <Feather name="chevron-right" size={20} color={colors.textInverse} />
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
   sellerCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.primary, padding: spacing.lg, marginBottom: spacing.lg, borderTopLeftRadius: 22, borderTopRightRadius: radius.lg, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: 22, ...shadows.fani },
   sellerIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
   sellerTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.textInverse },
-  sellerDesc: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: 'rgba(255,255,255,0.85)' },
+  sellerDesc: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textInverse },
   becomeSeller: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, padding: spacing.lg, marginBottom: spacing.lg, borderTopLeftRadius: 22, borderTopRightRadius: radius.lg, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: 22, borderWidth: 1.5, borderColor: colors.stitch, ...shadows.fani },
   becomeSellerTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.secondary },
   becomeSellerDesc: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },

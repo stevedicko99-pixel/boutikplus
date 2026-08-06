@@ -19,9 +19,7 @@ import { setupForegroundNotificationHandler } from '@/lib/pushNotificationServic
 export default function App() {
   // Configure le handler de notifications push au premier-plan.
   // Sans ça, les notifications ne s'affichent pas tant que l'app est ouverte.
-  useEffect(() => {
-    setupForegroundNotificationHandler();
-  }, []);
+  useEffect(() => setupForegroundNotificationHandler(), []);
 
   return (
     <GestureHandlerRootView style={styles.root}>

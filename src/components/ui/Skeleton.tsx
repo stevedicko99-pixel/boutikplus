@@ -1,158 +1,46 @@
-import { useEffect, useRef, memo } from 'react';
-import { StyleSheet, View, Animated, Easing, Platform } from 'react-native';
+import { memo, useEffect, useRef } from 'react';
+import { Animated, Easing, StyleSheet, View, type DimensionValue, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, radius, spacing } from '@/theme';
+import { useReducedMotion } from '@/lib/useReducedMotion';
 
-interface SkeletonProps {
-  width?: number | string;
-  height?: number;
-  borderRadius?: number;
-  style?: any;
-  /** Désactiver l'animation shimmer (utile pour les tests ou mode faible perf). */
-  noShimmer?: boolean;
-}
+interface SkeletonProps { width?: DimensionValue; height?: number; borderRadius?: number; style?: StyleProp<ViewStyle>; noShimmer?: boolean }
 
-/**
- * Bloc squelette animé (indicateur de chargement par bloc visuel).
- * - Léger : pas de dépendance lourde (SVG/MaskedView).
- * - Approche compatible web + natif : shimmer via Animated.View translatée.
- *   Sur web, on utilise aussi un dégradé background CSS via RN styles pour rester
- *   compatible RN Web sans modules supplémentaires.
- */
-function SkeletonComponent({
-  width = '100%',
-  height = 16,
-  borderRadius = radius.sm,
-  style,
-  noShimmer = false,
-}: SkeletonProps) {
+function SkeletonComponent({ width = '100%', height = 16, borderRadius = radius.sm, style, noShimmer = false }: SkeletonProps) {
   const anim = useRef(new Animated.Value(-1)).current;
+  const reducedMotion = useReducedMotion();
+  const staticMode = noShimmer || reducedMotion;
 
   useEffect(() => {
-    if (noShimmer) return undefined;
-    // Loop doux : x: -1 → 1 sur ~1.6s puis enchaînement.
-    const loop = Animated.loop(
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 1600,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
+    if (staticMode) return undefined;
+    const loop = Animated.loop(Animated.timing(anim, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }));
     loop.start();
     return () => loop.stop();
-  }, [anim, noShimmer]);
+  }, [anim, staticMode]);
 
-  const translateX = anim.interpolate({
-    inputRange: [-1, 1],
-    outputRange: [-100, 100],
-  });
-
+  const translateX = anim.interpolate({ inputRange: [-1, 1], outputRange: [-140, 140] });
   return (
-    <View
-      style={[
-        styles.base,
-        {
-          width,
-          height,
-          borderRadius,
-        },
-        style,
-      ]}
-    >
-      {noShimmer ? null : (
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Animated.View
-            style={[
-              styles.shimmer,
-              {
-                transform: [{ translateX }],
-              },
-            ]}
-          />
-        </View>
-      )}
+    <View accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.base, { width, height, borderRadius }, style]}>
+      {staticMode ? null : <Animated.View pointerEvents="none" style={[styles.shimmer, { transform: [{ translateX }] }]} />}
     </View>
   );
 }
 
 export const Skeleton = memo(SkeletonComponent);
 
-/**
- * Grille de 6 cartes produit en squelette.
- */
 export function SkeletonProductGrid({ count = 6, numColumns = 2 }: { count?: number; numColumns?: number }) {
-  const items = Array.from({ length: count }, (_, i) => i);
-  return (
-    <View style={[{ flexDirection: 'row', flexWrap: 'wrap' }, styles.productGrid]}>
-      {items.map((i) => (
-        <View
-          key={i}
-          style={[
-            styles.productCard,
-            { width: `${100 / numColumns}%` },
-            (i % 2 === 0) ? { paddingRight: spacing.md / 2 } : { paddingLeft: spacing.md / 2 },
-          ]}
-        >
-          <Skeleton width="100%" height={160} borderRadius={radius.lg} />
-          <View style={{ height: spacing.sm }} />
-          <Skeleton width="75%" height={12} />
-          <View style={{ height: spacing.xs }} />
-          <Skeleton width="50%" height={10} />
-          <View style={{ height: spacing.xs }} />
-          <Skeleton width="40%" height={14} borderRadius={radius.sm} />
-        </View>
-      ))}
-    </View>
-  );
+  return <View style={styles.productGrid}>{Array.from({ length: count }, (_, i) => <View key={i} style={[styles.productCard, { width: `${100 / numColumns}%`, paddingLeft: i % numColumns === 0 ? 0 : spacing.sm, paddingRight: i % numColumns === numColumns - 1 ? 0 : spacing.sm }]}><Skeleton height={160} borderRadius={radius.lg} /><View style={styles.gapSm} /><Skeleton width="75%" height={12} /><View style={styles.gapXs} /><Skeleton width="50%" height={10} /><View style={styles.gapXs} /><Skeleton width="40%" height={14} /></View>)}</View>;
 }
 
-/**
- * Carousel de boutiques squelettes.
- */
 export function SkeletonShopRow({ count = 4 }: { count?: number }) {
-  const items = Array.from({ length: count }, (_, i) => i);
-  return (
-    <View style={{ flexDirection: 'row', gap: spacing.md }}>
-      {items.map((i) => (
-        <View key={i} style={styles.shopCard}>
-          <Skeleton width={64} height={64} borderRadius={32} />
-          <View style={{ height: spacing.xs }} />
-          <Skeleton width={80} height={12} />
-          <View style={{ height: 2 }} />
-          <Skeleton width={60} height={10} />
-        </View>
-      ))}
-    </View>
-  );
+  return <View style={styles.shopRow}>{Array.from({ length: count }, (_, i) => <View key={i} style={styles.shopCard}><Skeleton width={64} height={64} borderRadius={32} /><View style={styles.gapXs} /><Skeleton width={80} height={12} /><View style={styles.gapTiny} /><Skeleton width={60} height={10} /></View>)}</View>;
 }
 
 const styles = StyleSheet.create({
-  base: {
-    backgroundColor: colors.surfaceAlt,
-    overflow: 'hidden',
-  },
-  shimmer: {
-    height: '100%',
-    width: '60%',
-    backgroundColor:
-      Platform.OS === 'web' ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.35)',
-    // Crée un dégradé sur le shimmer même sur web :
-    opacity: 0.85,
-  },
-  productGrid: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  productCard: {
-    marginBottom: spacing.md,
-  },
-  shopCard: {
-    width: 130,
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
+  base: { backgroundColor: colors.surfaceDeep, overflow: 'hidden' },
+  shimmer: { height: '100%', width: '55%', backgroundColor: 'rgba(255,255,255,0.48)', opacity: 0.8 },
+  productGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  productCard: { marginBottom: spacing.md },
+  shopRow: { flexDirection: 'row', gap: spacing.md },
+  shopCard: { width: 130, alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.borderLight },
+  gapSm: { height: spacing.sm }, gapXs: { height: spacing.xs }, gapTiny: { height: spacing.xxs },
 });

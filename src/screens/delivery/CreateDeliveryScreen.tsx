@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import * as Location from 'expo-location';
 import {
   StyleSheet,
   View,
@@ -23,6 +24,7 @@ import {
   formatFCFA,
 } from '@/lib/deliveryService';
 import { estimateDistanceKm, CITY_LIST, TIME_SLOTS, PACKAGE_SIZE_BUCKETS, getVehicle, type PackageSizeBucket } from '@/constants/delivery';
+import { getZoneById, getZonesForCity, type Coordinates } from '@/constants/cities';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -53,8 +55,12 @@ export function CreateDeliveryScreen({ navigation, route }: CreateDeliveryScreen
   const [form, setForm] = useState({
     pickupAddress: '',
     pickupCity: route.params?.pickupCity ?? profile?.city ?? 'Ouagadougou',
+    pickupZoneId: '',
+    pickupCoordinates: null as Coordinates | null,
     destinationAddress: '',
     destinationCity: 'Ouagadougou',
+    destinationZoneId: '',
+    destinationCoordinates: null as Coordinates | null,
     packageWeight: route.params?.packageWeight?.toString() ?? '2',
     packageLength: '20',
     packageWidth: '15',
@@ -89,8 +95,28 @@ export function CreateDeliveryScreen({ navigation, route }: CreateDeliveryScreen
     }));
   };
 
-  const distanceKm = estimateDistanceKm(form.pickupCity, form.destinationCity);
+  const pickupCoordinates = form.pickupCoordinates ?? getZoneById(form.pickupZoneId)?.center;
+  const destinationCoordinates = form.destinationCoordinates ?? getZoneById(form.destinationZoneId)?.center;
+  const distanceKm = estimateDistanceKm(
+    form.pickupCity,
+    form.destinationCity,
+    pickupCoordinates,
+    destinationCoordinates,
+  );
   const weight = parseFloat(form.packageWeight) || 0;
+
+  const useCurrentLocation = async (kind: 'pickup' | 'destination') => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted') {
+      Alert.alert('Localisation refusée', 'Autorisez la localisation pour utiliser votre position.');
+      return;
+    }
+    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const coordinates = { latitude: location.coords.latitude, longitude: location.coords.longitude };
+    setForm((current) => kind === 'pickup'
+      ? { ...current, pickupCoordinates: coordinates }
+      : { ...current, destinationCoordinates: coordinates });
+  };
   const length = parseFloat(form.packageLength) || 0;
   const width = parseFloat(form.packageWidth) || 0;
   const height = parseFloat(form.packageHeight) || 0;
@@ -105,10 +131,12 @@ export function CreateDeliveryScreen({ navigation, route }: CreateDeliveryScreen
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
-    if (!form.pickupAddress.trim()) e.pickupAddress = 'Adresse de prise en charge requise';
+    if (!form.pickupAddress.trim()) e.pickupAddress = 'Repère de prise en charge requis';
     if (!form.pickupCity.trim()) e.pickupCity = 'Ville de prise en charge requise';
-    if (!form.destinationAddress.trim()) e.destinationAddress = 'Adresse de destination requise';
+    if (!form.pickupZoneId) e.pickupZoneId = 'Zone de prise en charge requise';
+    if (!form.destinationAddress.trim()) e.destinationAddress = 'Repère de destination requis';
     if (!form.destinationCity.trim()) e.destinationCity = 'Ville de destination requise';
+    if (!form.destinationZoneId) e.destinationZoneId = 'Zone de destination requise';
     if (weight <= 0) e.packageWeight = 'Le poids doit être positif';
     if (weight > 1500) e.packageWeight = 'Poids max 1500 kg';
     if (length <= 0 || width <= 0 || height <= 0) e.dimensions = 'Dimensions invalides';
@@ -135,6 +163,10 @@ export function CreateDeliveryScreen({ navigation, route }: CreateDeliveryScreen
       pickupCity: form.pickupCity,
       destinationAddress: form.destinationAddress.trim(),
       destinationCity: form.destinationCity,
+      pickupLat: pickupCoordinates?.latitude ?? null,
+      pickupLng: pickupCoordinates?.longitude ?? null,
+      destinationLat: destinationCoordinates?.latitude ?? null,
+      destinationLng: destinationCoordinates?.longitude ?? null,
       packageWeight: weight,
       packageLength: length,
       packageWidth: width,
@@ -224,33 +256,41 @@ export function CreateDeliveryScreen({ navigation, route }: CreateDeliveryScreen
             <Text style={styles.stepTitle}>Itinéraire</Text>
           </View>
           <Card>
-            <Text style={styles.fieldLabel}>Prise en charge</Text>
+            <Text style={styles.fieldLabel}>Prise en charge — ville</Text>
+            <CityPicker
+              value={form.pickupCity}
+              onChange={(city) => setForm({ ...form, pickupCity: city, pickupZoneId: '', pickupCoordinates: null })}
+            />
+            <Text style={styles.fieldLabel}>Zone</Text>
+            <ZonePicker city={form.pickupCity} value={form.pickupZoneId} onChange={(zoneId) => setForm({ ...form, pickupZoneId: zoneId, pickupCoordinates: null })} />
+            {errors.pickupZoneId ? <Text style={styles.errorText}>{errors.pickupZoneId}</Text> : null}
             <Input
+              label="Repère *"
               value={form.pickupAddress}
               onChangeText={(v) => setForm({ ...form, pickupAddress: v })}
-              placeholder="Ex: Quartier Gounghin, près de la pharmacie"
+              placeholder="Ex: près de la pharmacie"
               icon="map-pin"
               error={errors.pickupAddress}
             />
-            <Text style={styles.fieldLabel}>Ville de prise en charge</Text>
-            <CityPicker
-              value={form.pickupCity}
-              onChange={(city) => setForm({ ...form, pickupCity: city })}
-            />
+            <LocationButton active={!!form.pickupCoordinates} onPress={() => useCurrentLocation('pickup')} />
             <View style={styles.routeDivider} />
-            <Text style={styles.fieldLabel}>Destination</Text>
+            <Text style={styles.fieldLabel}>Destination — ville</Text>
+            <CityPicker
+              value={form.destinationCity}
+              onChange={(city) => setForm({ ...form, destinationCity: city, destinationZoneId: '', destinationCoordinates: null })}
+            />
+            <Text style={styles.fieldLabel}>Zone</Text>
+            <ZonePicker city={form.destinationCity} value={form.destinationZoneId} onChange={(zoneId) => setForm({ ...form, destinationZoneId: zoneId, destinationCoordinates: null })} />
+            {errors.destinationZoneId ? <Text style={styles.errorText}>{errors.destinationZoneId}</Text> : null}
             <Input
+              label="Repère *"
               value={form.destinationAddress}
               onChangeText={(v) => setForm({ ...form, destinationAddress: v })}
-              placeholder="Ex: Quartier Wemtenga, rue 15.12"
+              placeholder="Ex: portail bleu, rue 15.12"
               icon="map-pin"
               error={errors.destinationAddress}
             />
-            <Text style={styles.fieldLabel}>Ville de destination</Text>
-            <CityPicker
-              value={form.destinationCity}
-              onChange={(city) => setForm({ ...form, destinationCity: city })}
-            />
+            <LocationButton active={!!form.destinationCoordinates} onPress={() => useCurrentLocation('destination')} />
             <View style={styles.distanceRow}>
               <Feather name="map" size={14} color={colors.primary} />
               <Text style={styles.distanceText}>
@@ -396,6 +436,27 @@ function CityPicker({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+function ZonePicker({ city, value, onChange }: { city: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <View style={styles.cityGrid}>
+      {getZonesForCity(city).map((zone) => (
+        <Pressable key={zone.id} style={[styles.cityChip, value === zone.id && styles.cityChipActive]} onPress={() => onChange(zone.id)}>
+          <Text style={[styles.cityChipText, value === zone.id && styles.cityChipTextActive]}>{zone.name}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function LocationButton({ active, onPress }: { active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={styles.locationButton} onPress={onPress}>
+      <Feather name="crosshair" size={16} color={colors.primary} />
+      <Text style={styles.locationButtonText}>{active ? 'Position GPS enregistrée' : 'Utiliser ma position'}</Text>
+    </Pressable>
+  );
+}
+
 function DateChips({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const dates = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -530,6 +591,22 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.borderLight,
     marginVertical: spacing.md,
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+  },
+  locationButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   distanceRow: {
     flexDirection: 'row',

@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, RefreshControl, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getPendingShops, getAllShops, getReports, getProducts, getUserCount } from '@/lib/dataService';
+import { getPendingShops, getAllShops, getReports, getProductCount, getUserCount } from '@/lib/dataService';
 import { PageLoader } from '@/components/ui/PageLoader';
 import { formatRelativeDate } from '@/lib/format';
 import type { Shop } from '@/types/models';
@@ -22,6 +22,8 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
   const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -31,14 +33,14 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
         getPendingShops(),
         getAllShops(),
         getReports(),
-        getProducts({ limit: 999 }),
+        getProductCount(),
         getUserCount(),
       ]);
       setPendingShops(pending);
       setAllShops(all);
       setRecentShops(all.slice(0, 5));
       setReports(r);
-      setProductCount(p.length);
+      setProductCount(p);
       setUserCount(uc);
     } finally {
       setLoading(false);
@@ -72,7 +74,7 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
         </Pressable>
       </View>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, wide && styles.wideContent]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
       >
@@ -98,7 +100,7 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
                   <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
                   <Text style={styles.shopMeta}>{shop.city} · {formatRelativeDate(shop.created_at)}</Text>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: '#FFF8E1' }]}><Text style={[styles.statusBadgeText, { color: colors.warning }]}>En attente</Text></View>
+                <View style={[styles.statusBadge, { backgroundColor: colors.warning + '18' }]}><Text style={[styles.statusBadgeText, { color: colors.warning }]}>En attente</Text></View>
                 <Feather name="chevron-right" size={18} color={colors.textMuted} />
               </Pressable>
             ))}
@@ -201,6 +203,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
   scroll: { padding: spacing.lg, paddingTop: 0, paddingBottom: spacing.xxxl },
+  wideContent: { width: '100%', maxWidth: 1180, alignSelf: 'center' },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.lg },
   statBox: { width: '47%', flexGrow: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.borderLight },
   statIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
@@ -217,8 +220,8 @@ const styles = StyleSheet.create({
   shopName: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.text },
   shopMeta: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
   statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
-  statusActive: { backgroundColor: '#E6F7EE' },
-  statusPending: { backgroundColor: '#FFF8E1' },
+  statusActive: { backgroundColor: colors.success + '18' },
+  statusPending: { backgroundColor: colors.warning + '18' },
   statusInactive: { backgroundColor: colors.surfaceAlt },
   statusBadgeText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, fontWeight: typography.weights.semibold },
   reportRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
@@ -228,8 +231,8 @@ const styles = StyleSheet.create({
   reportStatus: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
   reportStatusText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, fontWeight: typography.weights.semibold },
   emptyText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted, padding: spacing.lg, textAlign: 'center' },
-  actionGrid: { flexDirection: 'row', gap: spacing.md },
-  actionCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
+  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  actionCard: { flex: 1, minWidth: 130, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
   actionText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },
   actionBadge: { position: 'absolute', top: spacing.sm, right: spacing.sm, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   actionBadgeText: { fontFamily: typography.fontFamily, fontSize: 10, fontWeight: typography.weights.bold, color: colors.textInverse },

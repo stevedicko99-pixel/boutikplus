@@ -5,6 +5,7 @@
 // Dual-mode : Supabase si configuré, sinon cache mémoire démo (pattern promotionService).
 
 import * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { DEMO_PRODUCT_VIDEOS } from '@/data/demoData';
 import type {
@@ -106,18 +107,17 @@ export async function uploadVideo(
   const fileName = `${filePrefix}_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 8)}.${ext}`;
-  const path = fileName;
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData.user?.id;
+  if (!userId) return null;
+  const path = `${userId}/${fileName}`;
 
-  const formData = new FormData();
-  formData.append('file', {
-    uri: localUri,
-    name: fileName,
-    type: 'video/mp4',
-  } as unknown as Blob);
+  const response = await fetch(localUri);
+  const body = Platform.OS === 'web' ? await response.blob() : await response.arrayBuffer();
 
   const { data, error } = await supabase.storage
     .from(VIDEO_BUCKET)
-    .upload(path, formData, {
+    .upload(path, body, {
       contentType: 'video/mp4',
       upsert: false,
     });

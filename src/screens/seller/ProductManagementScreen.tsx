@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -22,11 +22,14 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<ProductWithImages[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const s = await getShopByOwner(profile?.id ?? 'demo-seller');
-    setShop(s);
+    if (!profile?.id) return;
+    setLoading(true);
+    const s = await getShopByOwner(profile.id);
     if (s) {
+      setShop(s);
       const prods = await getProductsByShop(s.id);
       setProducts(prods);
     }
@@ -39,11 +42,13 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
     Alert.alert('Supprimer', `Supprimer "${product.name}" ?`, [
       { text: 'Annuler' },
       { text: 'Supprimer', style: 'destructive', onPress: async () => {
+        setBusyId(product.id);
         const { error } = await deleteProduct(product.id);
+        setBusyId(null);
         if (error) {
           Alert.alert('Erreur', `Impossible de supprimer: ${error}`);
         } else {
-          await load();
+          setProducts((prev) => prev.filter((p) => p.id !== product.id));
         }
       } },
     ]);
@@ -51,8 +56,10 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
 
   const toggleStock = async (product: ProductWithImages) => {
     const newStatus: ProductStatus = product.status === 'available' ? 'out_of_stock' : 'available';
+    setBusyId(product.id);
     await updateProduct(product.id, { status: newStatus, stock: newStatus === 'available' ? 1 : 0 });
-    await load();
+    setBusyId(null);
+    setProducts((prev) => prev.map((p) => p.id === product.id ? { ...p, status: newStatus, stock: newStatus === 'available' ? 1 : 0 } : p));
   };
 
   return (
@@ -60,7 +67,7 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
       <View style={styles.header}>
         <Pressable onPress={navigation.goBack} hitSlop={10}><Feather name="arrow-left" size={24} color={colors.text} /></Pressable>
         <Text style={styles.title}>Mes produits</Text>
-        <Pressable style={styles.addBtn} onPress={() => navigation.navigate('AddEditProduct')}>
+        <Pressable style={styles.addBtn} onPress={() => navigation.navigate('AddEditProduct')} accessibilityRole="button" accessibilityLabel="Ajouter un produit">
           <Feather name="plus" size={22} color={colors.textInverse} />
         </Pressable>
       </View>
@@ -90,20 +97,26 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
                   {item.status === 'available' ? (
                     <Badge label="Disponible" color={colors.success} bgColor="#E6F7EE" />
                   ) : (
-                    <Badge label="Rupture" color={colors.danger} bgColor="#FDECEC" />
+                    <Badge label="Rupture" color={colors.danger} bgColor={colors.danger + '18'} />
                   )}
                 </View>
               </View>
               <View style={styles.actions}>
-                <Pressable style={styles.actionBtn} onPress={() => toggleStock(item)}>
-                  <Feather name={item.status === 'available' ? 'eye-off' : 'eye'} size={16} color={colors.warning} />
-                </Pressable>
-                <Pressable style={styles.actionBtn} onPress={() => navigation.navigate('AddEditProduct', { productId: item.id })}>
-                  <Feather name="edit-2" size={16} color={colors.secondary} />
-                </Pressable>
-                <Pressable style={styles.actionBtn} onPress={() => handleDelete(item)}>
-                  <Feather name="trash-2" size={16} color={colors.danger} />
-                </Pressable>
+                {busyId === item.id ? (
+                  <ActivityIndicator size="small" color={colors.primary} style={{ paddingHorizontal: 8 }} />
+                ) : (
+                  <>
+                    <Pressable style={styles.actionBtn} onPress={() => toggleStock(item)}>
+                      <Feather name={item.status === 'available' ? 'eye-off' : 'eye'} size={16} color={colors.warning} />
+                    </Pressable>
+                    <Pressable style={styles.actionBtn} onPress={() => navigation.navigate('AddEditProduct', { productId: item.id })}>
+                      <Feather name="edit-2" size={16} color={colors.secondary} />
+                    </Pressable>
+                    <Pressable style={styles.actionBtn} onPress={() => handleDelete(item)}>
+                      <Feather name="trash-2" size={16} color={colors.danger} />
+                    </Pressable>
+                  </>
+                )}
               </View>
             </View>
           )}

@@ -75,7 +75,8 @@ export async function getUserNotifications(userId: string): Promise<AppNotificat
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(50);
   if (error) console.error('getUserNotifications:', error.message);
   return (data as AppNotification[]) ?? [];
 }
@@ -87,9 +88,9 @@ export async function getUnreadCount(userId: string): Promise<number> {
   }
   const { count, error } = await supabase
     .from('notifications')
-    .select('*', { count: 'exact' })
+    .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('read', true);
+    .eq('read', false);
   if (error) console.error('getUnreadCount:', error.message);
   return count ?? 0;
 }
@@ -120,7 +121,7 @@ export async function markAllAsRead(userId: string): Promise<void> {
     .from('notifications')
     .update({ read: true })
     .eq('user_id', userId)
-    .eq('read', true);
+    .eq('read', false);
 }
 
 export async function createNotification(notification: Omit<AppNotification, 'id' | 'created_at' | 'read'>): Promise<void> {

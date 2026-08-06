@@ -176,12 +176,18 @@ export interface Order {
   updated_at: string;
 }
 
+export interface VariantInfo {
+  model?: string;
+  color?: string;
+}
+
 export interface OrderItem {
   id: string;
   order_id: string;
   product_id: string;
   quantity: number;
   unit_price: number;
+  variant_info?: VariantInfo | null;
   product?: ProductWithImages;
 }
 
@@ -206,6 +212,10 @@ export interface DeliveryAddress {
   id: string;
   user_id: string;
   city: string;
+  zone_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  landmark: string | null;
   district: string;
   instructions: string | null;
   contact_phone: string;
@@ -363,12 +373,18 @@ export interface DriverProfile {
 // Demande de livraison créée par un vendeur
 export interface DeliveryRequest {
   id: string;
+  order_id?: string | null;
+  buyer_id?: string | null;
   seller_id: string;
   driver_id: string | null;
   pickup_address: string;
   pickup_city: string;
   destination_address: string;
   destination_city: string;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  destination_lat?: number | null;
+  destination_lng?: number | null;
   package_weight: number; // kg
   package_length: number; // cm
   package_width: number; // cm
@@ -387,10 +403,78 @@ export interface DeliveryRequest {
   created_at: string;
   updated_at: string;
   accepted_at: string | null;
+  started_at?: string | null;
+  estimated_arrival_at?: string | null;
+  last_location_at?: string | null;
   delivered_at: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  refund_amount?: number | null;
+  refund_reason?: string | null;
+  refund_reference?: string | null;
+  refunded_at?: string | null;
   driver?: DriverProfile & { profile?: Pick<Profile, 'id' | 'full_name' | 'phone' | 'avatar_url' | 'city'> };
   seller?: Pick<Profile, 'id' | 'full_name' | 'phone' | 'avatar_url' | 'city'>;
+  buyer?: Pick<Profile, 'id' | 'full_name' | 'phone' | 'avatar_url' | 'city'>;
   payment?: DeliveryPayment;
+}
+
+export interface DriverLocation {
+  id: string;
+  delivery_id: string;
+  driver_id: string;
+  latitude: number;
+  longitude: number;
+  accuracy_m: number | null;
+  heading: number | null;
+  speed_mps: number | null;
+  recorded_at: string;
+  received_at: string;
+}
+
+export interface DeliveryEvent {
+  id: string;
+  delivery_id: string;
+  event_type: string;
+  actor_id: string | null;
+  from_status: DeliveryStatus | null;
+  to_status: DeliveryStatus | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export type DeliveryIncidentStatus = 'open' | 'investigating' | 'resolved' | 'rejected';
+
+export interface DeliveryIncident {
+  id: string;
+  delivery_id: string;
+  reported_by: string;
+  category: string;
+  description: string;
+  status: DeliveryIncidentStatus;
+  assigned_admin_id: string | null;
+  resolution: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeliveryMessage {
+  id: string;
+  delivery_id: string;
+  sender_id: string;
+  content: string;
+  read_at: string | null;
+  created_at: string;
+  sender?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>;
+}
+
+export interface DeliveryOperationsSummary {
+  deliveries_by_status: Partial<Record<DeliveryStatus, number>>;
+  open_incidents: number;
+  active_deliveries: number;
+  stale_locations: number;
+  generated_at: string;
 }
 
 // Paiement Mobile Money d'une livraison (table séparée de payments)

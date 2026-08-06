@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
@@ -14,6 +15,7 @@ import {
   type NotificationTypeKey,
 } from '@/lib/notifications';
 import type { AppNotification } from '@/types/models';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
 
 interface NotificationContextValue {
@@ -34,6 +36,28 @@ const NotificationContext = createContext<NotificationContextValue | undefined>(
   undefined,
 );
 
+const ORDER_NOTIFICATION_TYPES = new Set([
+  'new_order',
+  'proof_uploaded',
+  'payment_validated',
+  'stock_low',
+  'new_review',
+  'delivery_requested',
+  'delivery_accepted',
+  'delivery_status',
+  'delivery_payment_uploaded',
+  'delivery_payment_validated',
+  'delivery_cancelled',
+]);
+
+function isUnreadMessage(notification: AppNotification | null) {
+  return !!notification && !notification.read && notification.type === 'new_message';
+}
+
+function isUnreadOrder(notification: AppNotification | null) {
+  return !!notification && !notification.read && ORDER_NOTIFICATION_TYPES.has(notification.type);
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -41,6 +65,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadOrders, setUnreadOrders] = useState(0);
   const [loading, setLoading] = useState(true);
+  const notificationsRef = useRef<AppNotification[]>([]);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   const refresh = useCallback(async () => {
     if (!profile?.id) {
@@ -52,26 +81,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       getUserNotifications(profile.id),
       getUnreadCount(profile.id),
     ]);
+    notificationsRef.current = notifs;
     setNotifications(notifs);
     setUnreadCount(count);
-    setUnreadMessages(notifs.filter((n) => n.type === 'new_message' && !n.read).length);
-    setUnreadOrders(
-      notifs.filter(
-        (n) =>
-          (n.type === 'new_order' ||
-            n.type === 'proof_uploaded' ||
-            n.type === 'payment_validated' ||
-            n.type === 'stock_low' ||
-            n.type === 'new_review' ||
-            n.type === 'delivery_requested' ||
-            n.type === 'delivery_accepted' ||
-            n.type === 'delivery_status' ||
-            n.type === 'delivery_payment_uploaded' ||
-            n.type === 'delivery_payment_validated' ||
-            n.type === 'delivery_cancelled') &&
-          !n.read,
-      ).length,
-    );
+    setUnreadMessages(notifs.filter(isUnreadMessage).length);
+    setUnreadOrders(notifs.filter(isUnreadOrder).length);
     setLoading(false);
   }, [profile?.id]);
 
@@ -79,13 +93,63 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!profile?.id || !isSupabaseConfigured) return;
+    const channel = supabase
+      .channel(`notifications-${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${profile.id}`,
+        },
+        (payload) => {
+          const eventType = payload.eventType;
+          const incoming = eventType === 'DELETE' ? null : payload.new as AppNotification;
+          const payloadOld = eventType === 'INSERT' ? null : payload.old as Partial<AppNotification>;
+          const id = incoming?.id ?? payloadOld?.id;
+          if (!id) return;
+
+          const current = notificationsRef.current;
+          const existing = current.find((notification) => notification.id === id) ?? null;
+          const previous = existing ?? (payloadOld as AppNotification | null);
+          const unreadDelta = Number(isUnreadMessage(incoming)) - Number(isUnreadMessage(previous));
+          const orderDelta = Number(isUnreadOrder(incoming)) - Number(isUnreadOrder(previous));
+          const totalDelta = Number(!!incoming && !incoming.read) - Number(!!previous && !previous.read);
+
+          const next = (incoming
+            ? [incoming, ...current.filter((notification) => notification.id !== id)]
+            : current.filter((notification) => notification.id !== id)
+          )
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 50);
+          notificationsRef.current = next;
+          setNotifications(next);
+          if (totalDelta) setUnreadCount((count) => Math.max(0, count + totalDelta));
+          if (unreadDelta) setUnreadMessages((count) => Math.max(0, count + unreadDelta));
+          if (orderDelta) setUnreadOrders((count) => Math.max(0, count + orderDelta));
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [profile?.id]);
+
   const markNotificationRead = useCallback(
     async (id: string) => {
+      const notification = notificationsRef.current.find((item) => item.id === id);
+      if (notification && !notification.read) {
+        const next = notificationsRef.current.map((item) =>
+          item.id === id ? { ...item, read: true } : item,
+        );
+        notificationsRef.current = next;
+        setNotifications(next);
+        setUnreadCount((count) => Math.max(0, count - 1));
+        if (isUnreadMessage(notification)) setUnreadMessages((count) => Math.max(0, count - 1));
+        if (isUnreadOrder(notification)) setUnreadOrders((count) => Math.max(0, count - 1));
+      }
       await markAsRead(id);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-      );
-      setUnreadCount((c) => Math.max(0, c - 1));
     },
     [],
   );
@@ -93,7 +157,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const handleMarkAllRead = useCallback(async () => {
     if (!profile?.id) return;
     await markAllAsRead(profile.id);
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    const next = notificationsRef.current.map((notification) => ({ ...notification, read: true }));
+    notificationsRef.current = next;
+    setNotifications(next);
     setUnreadCount(0);
     setUnreadMessages(0);
     setUnreadOrders(0);

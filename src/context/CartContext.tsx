@@ -8,13 +8,14 @@ import {
 } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ProductWithImages, Shop } from '@/types/models';
+import type { ProductWithImages, Shop, VariantInfo } from '@/types/models';
 import { formatFCFA } from '@/lib/format';
 import { logger } from '@/lib/logger';
 
 export interface CartLine {
   product: ProductWithImages;
   quantity: number;
+  variant_info?: VariantInfo;
 }
 
 export interface CartSellerGroup {
@@ -32,6 +33,7 @@ interface CartContextValue {
   addItem: (product: ProductWithImages, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
+  updateVariant: (productId: string, variant: VariantInfo) => void;
   clear: () => void;
   hasProduct: (productId: string) => boolean;
   formattedTotal: string;
@@ -148,6 +150,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const updateVariant = useCallback(
+    (productId: string, variant: VariantInfo) => {
+      setItems((prev) =>
+        prev.map((l) =>
+          l.product.id === productId ? { ...l, variant_info: variant } : l,
+        ),
+      );
+    },
+    [],
+  );
+
   const clear = useCallback(() => {
     setItems([]);
     wipe().catch(() => {});
@@ -222,6 +235,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         addItem,
         removeItem,
         updateQuantity,
+        updateVariant,
         clear,
         hasProduct,
         formattedTotal: formatFCFA(total),

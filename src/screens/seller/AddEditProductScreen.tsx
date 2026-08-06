@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, Pressable, Alert, Modal, Dimensions, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,7 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
 import { getShopByOwner, getProduct, createProduct, updateProduct } from '@/lib/dataService';
-import { uploadMultipleImages, pickMultipleImages, deleteStorageObject } from '@/lib/storage';
+import { uploadMultipleImages, pickMultipleImages, deleteStorageObject, isLocalMediaUri } from '@/lib/storage';
 import { consumeAIResult } from '@/lib/aiResultHolder';
 import { consumePhotoResult } from '@/lib/photoResultHolder';
 import { deleteProductVideo } from '@/lib/videoService';
@@ -40,6 +40,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   const [categoryId, setCategoryId] = useState(CATEGORIES[0].id);
   const [stock, setStock] = useState('1');
   const [images, setImages] = useState<string[]>([]);
+  const pendingStorageDeletes = useRef<string[]>([]);
   const [videos, setVideos] = useState<ProductVideo[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -97,7 +98,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
         return copy;
       }
       // Sinon ajoute (dans la limite de 5)
-      if (prev.length >= 5) return prev;
+      if (prev.length >= 10) return prev;
       return [...prev, editedUri];
     });
     // Nettoie les params pour éviter une re-application au prochain render.
@@ -119,7 +120,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
             return copy;
           }
           // Sinon ajoute (dans la limite de 5)
-          if (prev.length >= 5 || prev.includes(photoResult.editedUri)) return prev;
+          if (prev.length >= 10 || prev.includes(photoResult.editedUri)) return prev;
           return [...prev, photoResult.editedUri];
         });
       }
@@ -138,7 +139,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
       if (aiImageUrls.length) {
         setImages((prev) => {
           const toAdd = aiImageUrls.filter((u) => !prev.includes(u));
-          const available = 5 - prev.length;
+          const available = 10 - prev.length;
           if (available > 0) {
             return [...prev, ...toAdd.slice(0, available)];
           }
@@ -150,19 +151,18 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   );
 
   const handleAddImage = async () => {
-    if (images.length >= 5) { Alert.alert('Maximum', '5 photos maximum par produit'); return; }
-    const remaining = 5 - images.length;
+    if (images.length >= 10) { Alert.alert('Maximum', '10 photos maximum par produit'); return; }
+    const remaining = 10 - images.length;
     const picked = await pickMultipleImages(remaining);
     if (picked.length) {
       setImages((prev) => [...prev, ...picked.map((img) => img.uri)]);
     }
   };
 
-  const handleRemoveImage = async (index: number) => {
+  const handleRemoveImage = (index: number) => {
     const uri = images[index];
-    // Supprime le fichier distant si c'est une URL Supabase existante
     if (uri && uri.startsWith('http') && uri.includes('/product-images/')) {
-      await deleteStorageObject('product-images', uri);
+      pendingStorageDeletes.current.push(uri);
     }
     setImages((prev) => prev.filter((_, idx) => idx !== index));
   };
@@ -185,13 +185,15 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
     const stockNum = parseInt(stock, 10) || 0;
 
     let imageUrls = images;
-    const newImages = images.filter((u) => u.startsWith('file://'));
+    const newImages = images.filter(isLocalMediaUri);
     if (newImages.length) {
       setUploadState({ done: 0, total: newImages.length, label: 'Préparation des images…' });
       try {
         const uploaded = await uploadMultipleImages('product-images', newImages, `prod_${shop.id}`);
+        if (uploaded.length !== newImages.length) throw new Error('Téléversement incomplet');
+        let uploadedIndex = 0;
+        imageUrls = images.map((uri) => isLocalMediaUri(uri) ? uploaded[uploadedIndex++].url : uri);
         setUploadState({ done: newImages.length, total: newImages.length, label: `✅ ${newImages.length} image(s) téléversée(s)` });
-        imageUrls = [...images.filter((u) => !u.startsWith('file://')), ...uploaded.map((u) => u.url)];
       } catch (e: any) {
         toast.error('Échec de l\'upload', friendlyMessage(e?.message ?? 'Erreur de téléversement'));
         setLoading(false);
@@ -215,6 +217,9 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
       if (error) { toast.error('Échec de la création', friendlyMessage(error)); setLoading(false); setUploadState(null); return; }
       toast.success('Produit ajouté', 'Votre produit est maintenant en ligne');
     }
+    const obsoleteUrls = [...pendingStorageDeletes.current];
+    pendingStorageDeletes.current = [];
+    await Promise.all(obsoleteUrls.map((uri) => deleteStorageObject('product-images', uri)));
     setUploadState(null);
     setLoading(false);
     setTimeout(() => navigation.goBack(), 400);
@@ -246,7 +251,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
           </Pressable>
         </View>
 
-        <Text style={styles.label}>Photos ({images.length}/5) · appui long pour retoucher</Text>
+        <Text style={styles.label}>Photos ({images.length}/10) · appui long pour retoucher</Text>
         <View style={styles.imageGrid}>
           {images.map((uri, i) => (
             <Pressable
@@ -265,7 +270,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
               {i === 0 ? <View style={styles.coverTag}><Text style={styles.coverText}>Couverture</Text></View> : null}
             </Pressable>
           ))}
-          {images.length < 5 ? (
+          {images.length < 10 ? (
             <View style={styles.addImageSlot}>
               <Pressable style={styles.addImageBtn} onPress={handleAddImage}>
                 <Feather name="image" size={22} color={colors.primary} />

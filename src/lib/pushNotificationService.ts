@@ -15,6 +15,8 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
+import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { logger } from './logger';
@@ -30,7 +32,7 @@ export function isPushAvailable(): boolean {
  * Configure le handler de notification au premier-plan (appel UNE FOIS au démarrage).
  * Sans ça, les notifications ne s'affichent pas quand l'app est ouverte.
  */
-export function setupForegroundNotificationHandler(): void {
+export function setupForegroundNotificationHandler(): () => void {
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
@@ -39,9 +41,17 @@ export function setupForegroundNotificationHandler(): void {
         shouldSetBadge: true,
       }),
     });
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      if (typeof data.delivery_id === 'string') {
+        Linking.openURL(`boutikplus://delivery/${data.delivery_id}`).catch(() => {});
+      }
+    });
+    return () => responseSubscription.remove();
   } catch (err) {
     const message = err instanceof Error ? err.message : String((err as any) ?? 'unknown');
     logger.error(`setupForegroundNotificationHandler: ${message}`, err as any);
+    return () => {};
   }
 }
 
@@ -51,6 +61,14 @@ export function setupForegroundNotificationHandler(): void {
  */
 export async function requestPushPermissions(): Promise<boolean> {
   if (!isPushAvailable()) return false;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Boutikplus',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+    });
+  }
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
@@ -74,15 +92,15 @@ export async function getExpoPushToken(): Promise<string | null> {
 
   const projectId =
     process.env.EXPO_PUBLIC_PROJECT_ID ||
-    // Récupère le projectId depuis Constants.expoConfig.extra (EAS Project ID) si set
-    undefined;
+    Constants.expoConfig?.extra?.eas?.projectId ||
+    Constants.easConfig?.projectId;
 
   try {
     const { data: token } = await Notifications.getExpoPushTokenAsync({
       // @ts-ignore projectId peut être undefined, Notifications handle ça
       projectId,
     });
-    if (!token?.startsWith('ExponentPushToken[')) return null;
+    if (!/^Expo(nent)?PushToken\[.+\]$/.test(token ?? '')) return null;
     return token;
   } catch (err) {
     logger.error('getExpoPushToken: erreur', err);

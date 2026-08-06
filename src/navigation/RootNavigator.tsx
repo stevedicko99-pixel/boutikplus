@@ -38,6 +38,7 @@ const linking = {
       OwnershipVerification: 'ownership',
       ShopDetail: 's/:shopId',
       ProductDetail: 'p/:productId',
+      DeliveryTracking: 'delivery/:deliveryId',
     } as Partial<Record<keyof AppStackParamList, string>>,
   },
 };
@@ -46,14 +47,28 @@ export function RootNavigator() {
   const { profile, loading } = useAuth();
   const navRef = useRef<NavigationContainerRef<AppStackParamList>>(null);
 
-  // Réinitialise la navigation selon l'état d'authentification
-  // et le RÔLE ACTIF de l'utilisateur (primary_role).
-  // Un utilisateur peut cumuler buyer + seller + driver → c'est primary_role
-  // qui détermine son tableau de bord d'accueil.
+  // Garde pour éviter les resetRoot intempestifs (ex: user clique "Accueil" depuis
+  // SellerDashboard, navigate('Home') marche, mais le useEffect rerun avec le
+  // même profile et resetRoot() immédiatement vers SellerDashboard).
+  // On compare :
+  //  - lastKnownAuth (null → userId : login ; userId → null : logout)
+  //  - on se base SUR LA PREMIÈRE ROUTE (Login/Register) pour initialiser le dashboard
+  const lastKnownAuthRef = useRef<{ uid: string | null; firstInit: boolean }>({
+    uid: null,
+    firstInit: true,
+  });
+
   useEffect(() => {
     if (loading || !navRef.current) return;
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     const isAuthenticated = Boolean(profile);
+    const uid = profile?.id ?? null;
+    const prev = lastKnownAuthRef.current;
+    // Login (était null → maintenant connecté) OU logout (connecté → null)
+    const authChanged = prev.uid !== uid;
+    // Premier démarrage : placer l'user sur son dashboard selon le rôle
+    const firstInit = prev.firstInit;
+    lastKnownAuthRef.current = { uid, firstInit: false };
 
     // Routes accessibles SANS connexion :
     // - aide/tutoriels
@@ -70,33 +85,32 @@ export function RootNavigator() {
       'Search',
       'Cart',
       'Checkout',
-      // Ownership publique (preuves niveau 1)
       'About',
       'OwnershipVerification',
     ];
 
-    if (isAuthenticated && (currentRoute === 'Login' || currentRoute === 'Register' || !currentRoute)) {
-      const role: UserRole = (profile?.primary_role as UserRole) ?? profile?.role ?? 'buyer';
-      let route: keyof AppStackParamList = 'Home';
+    const routeForRole = (p: NonNullable<typeof profile>): keyof AppStackParamList => {
+      const role: UserRole = (p.primary_role as UserRole) ?? p.role ?? 'buyer';
       switch (role) {
-        case 'seller':
-          route = 'SellerDashboard';
-          break;
-        case 'driver':
-          route = 'DriverDashboard';
-          break;
+        case 'seller': return 'SellerDashboard';
+        case 'driver': return 'DriverDashboard';
         case 'admin':
-        case 'super_admin':
-          route = 'AdminDashboard';
-          break;
+        case 'super_admin': return 'AdminDashboard';
         case 'buyer':
-        default:
-          route = 'Home';
+        default: return 'Home';
       }
+    };
+
+    // LOGIN (nouvel user connecté) ou PREMIER DÉMARRAGE connecté → routeur selon rôle.
+    // Si l'user vient de Login/Register → forcer aussi la redirection (sinon il reste dessus).
+    if (isAuthenticated && (authChanged || firstInit || currentRoute === 'Login' || currentRoute === 'Register' || !currentRoute)) {
+      const route = routeForRole(profile!);
       navRef.current.resetRoot({ index: 0, routes: [{ name: route }] });
     } else if (!isAuthenticated && currentRoute && !PUBLIC_ROUTES.includes(currentRoute)) {
       navRef.current.resetRoot({ index: 0, routes: [{ name: 'Login' }] });
     }
+    // Si l'utilisateur est CONNECTÉ et qu'il a volontairement navigué vers Home / ShopDetail /
+    // Cart / Search / etc. → ON NE FAIT RIEN. Pas de resetRoot vers son dashboard !
   }, [profile, loading]);
 
   if (loading) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -62,12 +62,12 @@ export function ReportsScreen({ navigation }: ReportsScreenProps) {
                   <Text style={styles.reportType}>{report.target_type === 'product' ? 'Produit' : 'Boutique'} signalé</Text>
                   <Text style={styles.reportId}>ID: {report.target_id}</Text>
                 </View>
-                <Badge label="En attente" color={colors.warning} bgColor="#FFF8E1" />
+                <Badge label="En attente" color={colors.warning} bgColor={colors.warning + '18'} />
               </View>
               <Text style={styles.reportReason}>{report.reason}</Text>
               <Text style={styles.reportDate}>Reçu {formatRelativeDate(report.created_at)}</Text>
               <View style={styles.actionRow}>
-                <Pressable style={[styles.actionBtn, styles.dismissBtn]} onPress={() => handleAction(report, 'dismiss')}>
+                <Pressable style={[styles.actionBtn, styles.dismissBtn]} onPress={() => handleAction(report, 'dismiss')} accessibilityRole="button" accessibilityLabel="Ignorer ce signalement">
                   <Feather name="x" size={16} color={colors.textMuted} />
                   <Text style={[styles.actionText, { color: colors.textMuted }]}>Ignorer</Text>
                 </Pressable>

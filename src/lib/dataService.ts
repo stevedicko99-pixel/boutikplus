@@ -132,6 +132,14 @@ export async function getShopByOwner(ownerId: string): Promise<Shop | null> {
 }
 
 // ---------- Produits ----------
+function sortProductMedia(product: ProductWithImages): ProductWithImages {
+  return {
+    ...product,
+    images: [...(product.images ?? [])].sort((a, b) => a.position - b.position),
+    videos: [...(product.videos ?? [])].sort((a, b) => a.position - b.position),
+  };
+}
+
 export async function getProducts(
   filters?: ProductFilters,
 ): Promise<ProductWithImages[]> {
@@ -156,7 +164,7 @@ export async function getProducts(
       result = result.filter((p) => p.price <= filters.maxPrice!);
     const offset = filters?.offset ?? 0;
     const limit = filters?.limit ?? 50;
-    return result.slice(offset, offset + limit);
+    return result.slice(offset, offset + limit).map(sortProductMedia);
   }
   let query = supabase
     .from('products')
@@ -168,11 +176,14 @@ export async function getProducts(
     query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
   }
   if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
-  if (filters?.limit) query = query.limit(filters.limit);
-  if (filters?.offset) query = query.range(filters.offset, filters.offset + (filters.limit ?? 20) - 1);
+  if (filters?.minPrice != null) query = query.gte('price', filters.minPrice);
+  if (filters?.maxPrice != null) query = query.lte('price', filters.maxPrice);
+  const offset = filters?.offset ?? 0;
+  const limit = filters?.limit ?? 50;
+  query = query.range(offset, offset + limit - 1);
   const { data, error } = await query;
   if (error) console.error('getProducts:', error.message);
-  return (data as ProductWithImages[]) ?? [];
+  return ((data as ProductWithImages[]) ?? []).map(sortProductMedia);
 }
 
 export async function getProduct(
@@ -204,7 +215,7 @@ export async function getProductsByShop(
     .eq('shop_id', shopId)
     .order('created_at', { ascending: false });
   if (error) console.error('getProductsByShop:', error.message);
-  return (data as ProductWithImages[]) ?? [];
+  return ((data as ProductWithImages[]) ?? []).map(sortProductMedia);
 }
 
 // ---------- Vues produits ----------
@@ -378,7 +389,7 @@ export async function getSellerOrders(
 export async function createOrder(params: {
   buyerId: string;
   sellerId: string;
-  items: { product_id: string; quantity: number; unit_price: number }[];
+  items: { product_id: string; quantity: number; unit_price: number; variant_info?: { model?: string; color?: string } | null }[];
   totalAmount: number;
   addressId: string | null;
   note?: string | null;
@@ -407,8 +418,9 @@ export async function createOrder(params: {
     product_id: it.product_id,
     quantity: it.quantity,
     unit_price: it.unit_price,
+    variant_info: it.variant_info ?? null,
   }));
-  await supabase.from('order_items').insert(orderItems);
+  await supabase.from('order_items').insert(orderItems as any);
   return { orderId, error: null };
 }
 
@@ -608,7 +620,11 @@ export async function createProduct(params: {
       image_url: url,
       position: i,
     }));
-    await supabase.from('product_images').insert(imgs);
+    const { error: imageError } = await supabase.from('product_images').insert(imgs);
+    if (imageError) {
+      await supabase.from('products').delete().eq('id', data.id);
+      return { error: imageError.message };
+    }
   }
   return { error: null };
 }
@@ -860,6 +876,21 @@ export async function getReports(): Promise<any[]> {
     .order('created_at', { ascending: false });
   if (error) console.error('getReports:', error.message);
   return data ?? [];
+}
+
+export async function getProductCount(): Promise<number> {
+  if (useDemo) {
+    await delay(100);
+    return DEMO_PRODUCTS.length;
+  }
+  const { count, error } = await supabase
+    .from('products')
+    .select('*', { count: 'exact', head: true });
+  if (error) {
+    console.error('getProductCount:', error.message);
+    return 0;
+  }
+  return count ?? 0;
 }
 
 /**

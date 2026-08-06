@@ -10,7 +10,7 @@
 //  - le format MIME est image/jpeg
 //  - le chemin est préfixé par userId (conformité RLS)
 // ============================================================
-import { uploadImage } from '@/lib/storage';
+import { isLocalMediaUri, UploadError, uploadImage } from '@/lib/storage';
 
 // --- Mocks Supabase ---
 const mockUpload = jest.fn();
@@ -41,14 +41,28 @@ jest.mock('@/lib/logger', () => ({
 describe('uploadImage — pipeline Supabase Storage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    global.fetch = jest.fn().mockResolvedValue({
+      blob: jest.fn().mockResolvedValue(new Blob(['image'])),
+      arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(5)),
+    }) as jest.Mock;
   });
 
-  it('retourne null si l\'utilisateur n\'est pas authentifié (RLS)', async () => {
+  it.each(['file://photo.jpg', 'content://photo/1', 'data:image/jpeg;base64,AA==', 'blob:https://app/photo'])(
+    'détecte %s comme URI média locale',
+    (uri) => expect(isLocalMediaUri(uri)).toBe(true),
+  );
+
+  it('ne considère pas une URL distante comme locale', () => {
+    expect(isLocalMediaUri('https://cdn.example/photo.jpg')).toBe(false);
+  });
+
+  it('lève UploadError si l\'utilisateur n\'est pas authentifié (RLS)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
-    const result = await uploadImage('product-images', 'file://photo.jpg', 'test');
-
-    expect(result).toBeNull();
+    await expect(uploadImage('product-images', 'file://photo.jpg', 'test')).rejects.toMatchObject({
+      name: 'UploadError',
+      code: 'AUTH_REQUIRED',
+    });
     expect(mockUpload).not.toHaveBeenCalled();
   });
 
@@ -94,16 +108,14 @@ describe('uploadImage — pipeline Supabase Storage', () => {
     expect(path.startsWith('seller-abc/')).toBe(true);
   });
 
-  it('retourne null et log l\'erreur si Supabase renvoie une erreur', async () => {
+  it('lève UploadError si Supabase renvoie une erreur', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
     mockUpload.mockResolvedValue({
       data: null,
       error: { message: 'Bucket not found', statusCode: '404' },
     });
 
-    const result = await uploadImage('product-images', 'file://p.jpg', 'img');
-
-    expect(result).toBeNull();
+    await expect(uploadImage('product-images', 'file://p.jpg', 'img')).rejects.toBeInstanceOf(UploadError);
   });
 
   it('génère un nom de fichier unique (timestamp + random)', async () => {

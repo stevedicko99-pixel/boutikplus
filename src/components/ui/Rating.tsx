@@ -9,6 +9,8 @@ interface RatingProps {
   count?: number;
   interactive?: boolean;
   onRate?: (rating: number) => void;
+  inverse?: boolean;
+  accessibilityLabel?: string;
 }
 
 export function Rating({
@@ -18,16 +20,28 @@ export function Rating({
   count,
   interactive = false,
   onRate,
+  inverse = false,
+  accessibilityLabel,
 }: RatingProps) {
+  const roundedValue = Math.round(value);
+  const label = accessibilityLabel ?? `${value.toFixed(1)} étoiles sur 5${count != null ? `, ${count} avis` : ''}`;
   if (interactive) {
     return (
-      <View style={styles.row}>
+      <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel={label}>
         {[1, 2, 3, 4, 5].map((star) => (
-          <Pressable key={star} onPress={() => onRate?.(star)} hitSlop={6}>
+          <Pressable
+            key={star}
+            onPress={() => onRate?.(star)}
+            hitSlop={6}
+            accessibilityRole="radio"
+            accessibilityLabel={`${star} étoile${star > 1 ? 's' : ''}`}
+            accessibilityState={{ selected: star === roundedValue }}
+            style={styles.starControl}
+          >
             <MaterialCommunityIcons
-              name={star <= Math.round(value) ? 'star' : 'star-outline'}
+              name={star <= roundedValue ? 'star' : 'star-outline'}
               size={size + 6}
-              color={star <= Math.round(value) ? colors.warning : colors.border}
+              color={star <= roundedValue ? colors.warning : colors.border}
             />
           </Pressable>
         ))}
@@ -36,27 +50,27 @@ export function Rating({
   }
 
   return (
-    <View style={styles.row}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <MaterialCommunityIcons
-          key={star}
-          name={star <= Math.round(value) ? 'star' : 'star-outline'}
-          size={size}
-          color={star <= Math.round(value) ? colors.warning : colors.border}
-        />
-      ))}
-      {showValue ? (
-        <Text style={styles.value}>{value.toFixed(1)}</Text>
-      ) : null}
-      {count != null ? (
-        <Text style={styles.count}>({count})</Text>
-      ) : null}
+    <View accessible accessibilityRole="text" accessibilityLabel={label} style={styles.row}>
+      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.row}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <MaterialCommunityIcons
+            key={star}
+            name={star <= roundedValue ? 'star' : 'star-outline'}
+            size={size}
+            color={star <= roundedValue ? colors.warning : inverse ? 'rgba(255,255,255,0.55)' : colors.border}
+          />
+        ))}
+        {showValue ? <Text style={[styles.value, inverse && styles.inverse]}>{value.toFixed(1)}</Text> : null}
+        {count != null ? <Text style={[styles.count, inverse && styles.inverse]}>({count})</Text> : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  starControl: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  inverse: { color: colors.textInverse },
   value: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.small,

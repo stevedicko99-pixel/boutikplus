@@ -2,6 +2,9 @@
 // Types de véhicules, tailles de colis, villes et filtres.
 
 import type { VehicleType, DeliveryStatus } from '@/types/models';
+import { CITY_LIST, getCityByName, type Coordinates } from '@/constants/cities';
+
+export { CITY_LIST, getZonesForCity, getZoneById } from '@/constants/cities';
 
 export interface VehicleDef {
   id: VehicleType;
@@ -123,20 +126,6 @@ export const PACKAGE_SIZE_BUCKETS: PackageSizeBucket[] = [
   },
 ];
 
-// Villes principales du Burkina Faso
-export const CITY_LIST: string[] = [
-  'Ouagadougou',
-  'Bobo-Dioulasso',
-  'Koudougou',
-  'Ouahigouya',
-  'Banfora',
-  'Tenkodogo',
-  'Fada N\'Gourma',
-  'Dédougou',
-  'Dori',
-  'Gaoua',
-];
-
 // Créneaux horaires disponibles
 export const TIME_SLOTS: string[] = [
   '08:00 - 10:00',
@@ -162,20 +151,27 @@ export const DELIVERY_FILTERS: DeliveryFilterDef[] = [
   { id: 'cancelled', label: 'Annulées' },
 ];
 
-// Estimation de distance (km) entre deux villes — table simplifiée Burkina
-const CITY_DISTANCES: Record<string, number> = {
-  'Ouagadougou|Bobo-Dioulasso': 360,
-  'Ouagadougou|Koudougou': 100,
-  'Ouagadougou|Ouahigouya': 180,
-  'Ouagadougou|Banfora': 420,
-  'Ouagadougou|Tenkodogo': 190,
-  'Bobo-Dioulasso|Banfora': 85,
-  'Bobo-Dioulasso|Koudougou': 280,
-};
+export function haversineDistanceKm(from: Coordinates, to: Coordinates): number {
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = toRadians(to.latitude - from.latitude);
+  const longitudeDelta = toRadians(to.longitude - from.longitude);
+  const fromLatitude = toRadians(from.latitude);
+  const toLatitude = toRadians(to.latitude);
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
-export function estimateDistanceKm(cityA: string, cityB: string): number {
-  if (cityA === cityB) return 5; // intra-ville
-  const key1 = `${cityA}|${cityB}`;
-  const key2 = `${cityB}|${cityA}`;
-  return CITY_DISTANCES[key1] ?? CITY_DISTANCES[key2] ?? 50;
+export function estimateDistanceKm(
+  cityA: string,
+  cityB: string,
+  coordinatesA?: Coordinates | null,
+  coordinatesB?: Coordinates | null,
+): number {
+  const from = coordinatesA ?? getCityByName(cityA)?.center;
+  const to = coordinatesB ?? getCityByName(cityB)?.center;
+  if (!from || !to) return 0;
+  return Math.round(haversineDistanceKm(from, to) * 10) / 10;
 }

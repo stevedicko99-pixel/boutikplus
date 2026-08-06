@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import * as Location from 'expo-location';
 import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -15,7 +16,7 @@ import { getAddresses, saveAddress, createOrder, isDemoMode } from '@/lib/dataSe
 import { validateDiscountCode, redeemDiscountCode } from '@/lib/promotionService';
 import { formatFCFA } from '@/lib/format';
 import { friendlyMessage } from '@/lib/errorMessages';
-import { CITY_LIST } from '@/constants/cities';
+import { CITY_LIST, getZoneById, getZonesForCity } from '@/constants/cities';
 import type { DeliveryAddress, DiscountValidationResult } from '@/types/models';
 
 interface CheckoutScreenProps {
@@ -33,7 +34,8 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   const [selectedAddr, setSelectedAddr] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [showAddrForm, setShowAddrForm] = useState(false);
-  const [newAddr, setNewAddr] = useState({ city: CITY_LIST[0], district: '', instructions: '', phone: profile?.phone ?? '' });
+  const emptyAddress = () => ({ city: CITY_LIST[0], zoneId: '', district: '', landmark: '', instructions: '', phone: profile?.phone ?? '', latitude: null as number | null, longitude: null as number | null });
+  const [newAddr, setNewAddr] = useState(emptyAddress);
   const [loading, setLoading] = useState(false);
 
   // Code promo
@@ -59,22 +61,37 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
     if (def) setSelectedAddr(def.id);
   };
 
+  const useCurrentLocation = async () => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted') {
+      Alert.alert('Localisation refusée', 'Autorisez la localisation pour utiliser votre position.');
+      return;
+    }
+    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    setNewAddr((current) => ({ ...current, latitude: location.coords.latitude, longitude: location.coords.longitude }));
+  };
+
   const handleSaveAddr = async () => {
-    if (!newAddr.district || !newAddr.phone) {
-      Alert.alert('Erreur', 'Veuillez remplir le quartier et le téléphone');
+    if (!newAddr.zoneId || !newAddr.landmark.trim() || !newAddr.phone) {
+      Alert.alert('Erreur', 'Veuillez choisir une zone et renseigner le repère et le téléphone');
       return;
     }
     if (!buyerId) return;
+    const selectedZone = getZoneById(newAddr.zoneId);
     await saveAddress({
       city: newAddr.city,
-      district: newAddr.district,
-      instructions: newAddr.instructions,
+      zone_id: newAddr.zoneId,
+      latitude: newAddr.latitude,
+      longitude: newAddr.longitude,
+      landmark: newAddr.landmark.trim(),
+      district: newAddr.district.trim() || selectedZone?.name || newAddr.landmark.trim(),
+      instructions: newAddr.instructions || newAddr.landmark.trim(),
       contact_phone: newAddr.phone,
       user_id: buyerId,
       is_default: addresses.length === 0,
     });
     setShowAddrForm(false);
-    setNewAddr({ city: CITY_LIST[0], district: '', instructions: '', phone: profile?.phone ?? '' });
+    setNewAddr(emptyAddress());
     await loadAddresses();
   };
 
@@ -171,6 +188,7 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
           product_id: l.product.id,
           quantity: l.quantity,
           unit_price: l.product.price,
+          variant_info: l.variant_info ?? null,
         })),
         totalAmount: groupTotal,
         addressId: selectedAddr,
@@ -283,9 +301,14 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
 
         {showAddrForm ? (
           <Card style={styles.addrForm}>
-            <Input label="Ville" value={newAddr.city} onChangeText={(v) => setNewAddr({ ...newAddr, city: v })} icon="map-pin" />
-            <Input label="Quartier *" value={newAddr.district} onChangeText={(v) => setNewAddr({ ...newAddr, district: v })} placeholder="Ex: Gounghin" icon="home" />
-            <Input label="Indications" value={newAddr.instructions} onChangeText={(v) => setNewAddr({ ...newAddr, instructions: v })} placeholder="Ex: près de la pharmacie" multiline numberOfLines={2} />
+            <Text style={styles.fieldLabel}>Ville</Text>
+            <ChoiceChips options={CITY_LIST} value={newAddr.city} onChange={(city) => setNewAddr({ ...newAddr, city, zoneId: '' })} />
+            <Text style={styles.fieldLabel}>Zone *</Text>
+            <ChoiceChips options={getZonesForCity(newAddr.city).map((zone) => ({ id: zone.id, label: zone.name }))} value={newAddr.zoneId} onChange={(zoneId) => setNewAddr({ ...newAddr, zoneId })} />
+            <Input label="Repère *" value={newAddr.landmark} onChangeText={(v) => setNewAddr({ ...newAddr, landmark: v })} placeholder="Ex: portail bleu près de la pharmacie" icon="map-pin" />
+            <Input label="Quartier (compatibilité)" value={newAddr.district} onChangeText={(v) => setNewAddr({ ...newAddr, district: v })} placeholder="Renseigné depuis la zone si vide" icon="home" />
+            <Input label="Indications" value={newAddr.instructions} onChangeText={(v) => setNewAddr({ ...newAddr, instructions: v })} placeholder="Instructions complémentaires" multiline numberOfLines={2} />
+            <Pressable style={styles.locationButton} onPress={useCurrentLocation}><Feather name="crosshair" size={16} color={colors.primary} /><Text style={styles.locationButtonText}>{newAddr.latitude != null ? 'Position GPS enregistrée' : 'Utiliser ma position'}</Text></Pressable>
             <Input label="Téléphone *" value={newAddr.phone} onChangeText={(v) => setNewAddr({ ...newAddr, phone: v })} keyboardType="phone-pad" icon="phone" />
             <View style={styles.formActions}>
               <Button label="Annuler" variant="ghost" onPress={() => setShowAddrForm(false)} style={{ flex: 1 }} />
@@ -304,9 +327,16 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         {sellerGroups.map((group) => (
           <Card key={group.sellerId} style={styles.recapCard}>
             <Text style={styles.recapShop}>{group.shop?.name}</Text>
-            {group.lines.map((line) => (
-              <View key={line.product.id} style={styles.recapLine}>
-                <Text style={styles.recapItem} numberOfLines={1}>{line.quantity}× {line.product.name}</Text>
+            {group.lines.map((line, idx) => (
+              <View key={line.product.id + '-' + idx} style={styles.recapLine}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.recapItem} numberOfLines={1}>{line.quantity}× {line.product.name}</Text>
+                  {(line.variant_info?.model || line.variant_info?.color) ? (
+                    <Text style={styles.recapVariant}>
+                      {[line.variant_info.model && `Modèle: ${line.variant_info.model}`, line.variant_info.color && `Couleur: ${line.variant_info.color}`].filter(Boolean).join(' · ')}
+                    </Text>
+                  ) : null}
+                </View>
                 <Text style={styles.recapPrice}>{formatFCFA(line.product.price * line.quantity)}</Text>
               </View>
             ))}
@@ -430,6 +460,14 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   );
 }
 
+function ChoiceChips({ options, value, onChange }: { options: readonly (string | { id: string; label: string })[]; value: string; onChange: (value: string) => void }) {
+  return <View style={styles.choiceGrid}>{options.map((option) => {
+    const id = typeof option === 'string' ? option : option.id;
+    const label = typeof option === 'string' ? option : option.label;
+    return <Pressable key={id} style={[styles.choiceChip, value === id && styles.choiceChipActive]} onPress={() => onChange(id)}><Text style={[styles.choiceText, value === id && styles.choiceTextActive]}>{label}</Text></Pressable>;
+  })}</View>;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
@@ -494,6 +532,14 @@ const styles = StyleSheet.create({
   defaultTag: { backgroundColor: '#FFF0E0', borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   defaultText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.primary, fontWeight: typography.weights.semibold },
   addrForm: { marginBottom: spacing.md },
+  fieldLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.medium, color: colors.text, marginBottom: spacing.xs },
+  choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  choiceChip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border },
+  choiceChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  choiceText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.text },
+  choiceTextActive: { color: colors.textInverse, fontWeight: typography.weights.semibold },
+  locationButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.md, marginBottom: spacing.md },
+  locationButtonText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.primary, fontWeight: typography.weights.semibold },
   formActions: { flexDirection: 'row', marginTop: spacing.sm },
   addAddrBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.md, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radius.lg, marginBottom: spacing.md },
   addAddrText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, color: colors.primary, fontWeight: typography.weights.semibold },
@@ -501,6 +547,7 @@ const styles = StyleSheet.create({
   recapShop: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.secondary, marginBottom: spacing.sm },
   recapLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   recapItem: { flex: 1, fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.text, marginRight: spacing.sm },
+  recapVariant: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.primary, marginTop: 2 },
   recapPrice: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },
   recapSub: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing.sm, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight },
   recapSubLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted },
