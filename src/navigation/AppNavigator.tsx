@@ -62,7 +62,7 @@ export type AppStackParamList = {
   ProductDetail: { productId: string };
   Cart: undefined;
   Checkout: undefined;
-  Payment: { orderId: string };
+  Payment: { orderId: string; remainingOrderIds?: string[] };
   OrderConfirmation: { orderId: string };
   ConversationList: undefined;
   Chat: { conversationId: string; shopId?: string; productId?: string };
@@ -140,6 +140,7 @@ const ProfileTab = withTabBar(ProfileScreen, 'Profile');
 export function AppNavigator() {
   return (
     <Stack.Navigator
+      initialRouteName="Home"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },

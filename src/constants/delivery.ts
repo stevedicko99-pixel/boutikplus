@@ -14,6 +14,9 @@ export interface VehicleDef {
   speedKmH: number;
 }
 
+// Frais de livraison standard appliqués par boutique lors du checkout.
+export const DELIVERY_FEE_PER_SELLER = 1000;
+
 export const VEHICLE_TYPES: Record<VehicleType, VehicleDef> = {
   moto: {
     id: 'moto',

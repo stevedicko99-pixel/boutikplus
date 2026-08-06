@@ -1,12 +1,5 @@
-import {
-  StyleSheet,
-  Pressable,
-  Text,
-  ActivityIndicator,
-  type ViewStyle,
-  type StyleProp,
-} from 'react-native';
-import { colors, typography, radius, spacing } from '@/theme';
+import { StyleSheet, Pressable, Text, ActivityIndicator, type ViewStyle, type StyleProp } from 'react-native';
+import { colors, typography, radius, spacing, shadows } from '@/theme';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
@@ -72,6 +65,7 @@ export function Button({
           paddingVertical: padding,
           opacity: isDisabled ? 0.5 : pressed ? 0.85 : 1,
         },
+        variant === 'primary' && !isDisabled && shadows.primary,
         fullWidth && styles.fullWidth,
         style,
       ]}
@@ -96,7 +90,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
     paddingHorizontal: spacing.lg,
   },

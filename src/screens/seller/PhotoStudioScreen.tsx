@@ -4,15 +4,7 @@
 // Conçu pour appareils low-end : preview unique, actions légères, pas de WebGL.
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import { StyleSheet, View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -26,6 +18,7 @@ import {
   type EditOptions,
 } from '@/lib/photoStudio';
 
+import { showAlert } from '@/lib/dialog';
 interface PhotoStudioScreenProps {
   navigation: {
     navigate: (screen: string, params?: any) => void;
@@ -109,7 +102,7 @@ export function PhotoStudioScreen({ navigation, route }: PhotoStudioScreenProps)
         editIndex,
       });
     } catch (e) {
-      Alert.alert('Erreur', "Impossible de traiter l'image. Réessayez.");
+      showAlert('Erreur', "Impossible de traiter l'image. Réessayez.");
     } finally {
       setApplying(false);
     }

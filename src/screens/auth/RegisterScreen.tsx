@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -19,6 +19,7 @@ import {
   normalizePhone,
 } from '@/lib/validators';
 
+import { showAlert } from '@/lib/dialog';
 interface RegisterScreenProps {
   navigation: { goBack: () => void; navigate: (screen: string, params?: any) => void };
 }
@@ -67,7 +68,7 @@ export function RegisterScreen({ navigation }: RegisterScreenProps) {
     if (err) {
       setError(err);
     } else {
-      Alert.alert(
+      showAlert(
         'Compte créé !',
         "Un email de confirmation vous a été envoyé. Confirmez votre adresse avant de vous connecter.",
         [{ text: 'OK', onPress: navigation.goBack }],

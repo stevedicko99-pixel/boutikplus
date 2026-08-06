@@ -1,5 +1,5 @@
-import { StyleSheet, View, Platform, type ViewStyle, type StyleProp } from 'react-native';
-import { colors, radius, spacing } from '@/theme';
+import { StyleSheet, View, type ViewStyle, type StyleProp } from 'react-native';
+import { colors, radius, spacing, shadows } from '@/theme';
 
 interface CardProps {
   children: React.ReactNode;
@@ -17,19 +17,10 @@ export function Card({ children, style, padded = true }: CardProps) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.borderLight,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
-      },
-      android: { elevation: 2 },
-      default: { boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)' },
-    }),
+    ...shadows.sm,
   },
   padded: { padding: spacing.lg },
 });

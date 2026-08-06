@@ -5,14 +5,7 @@
 // MVP : 1 vidéo par produit. Les vidéos externes s'ouvrent dans l'app native.
 
 import { useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Alert,
-} from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -33,6 +26,7 @@ import {
 import { openExternalLink } from '@/lib/safeLinking';
 import type { ExternalVideoSource } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface ProductVideoPickerScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
   route: { params?: { productId?: string; returnTo?: 'AddEditProduct' } };
@@ -59,16 +53,16 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
   const handlePaste = async () => {
     const text = await Clipboard.getStringAsync();
     if (text) setUrl(text.trim());
-    else Alert.alert('Presse-papier vide', 'Copiez d\'abord un lien vidéo.');
+    else showAlert('Presse-papier vide', 'Copiez d\'abord un lien vidéo.');
   };
 
   const handleAddExternal = async () => {
     if (!productId) {
-      Alert.alert('Produit requis', 'Enregistrez d\'abord le produit avant d\'ajouter une vidéo.');
+      showAlert('Produit requis', 'Enregistrez d\'abord le produit avant d\'ajouter une vidéo.');
       return;
     }
     const err = validateExternalUrl(url);
-    if (err) { Alert.alert('Lien invalide', err); return; }
+    if (err) { showAlert('Lien invalide', err); return; }
 
     setSaving(true);
     const { video, error } = await addProductVideo({
@@ -78,8 +72,8 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
       source: detectExternalSource(url),
     });
     setSaving(false);
-    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
-    Alert.alert('Vidéo ajoutée ✓', `Lien ${sourceMeta.label} enregistré.`, [
+    if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
+    showAlert('Vidéo ajoutée ✓', `Lien ${sourceMeta.label} enregistré.`, [
       { text: 'OK', onPress: () => navigation.navigate(returnTo, { productId }) },
     ]);
     void video;
@@ -87,7 +81,7 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
 
   const handleUpload = async () => {
     if (!productId) {
-      Alert.alert('Produit requis', 'Enregistrez d\'abord le produit avant d\'ajouter une vidéo.');
+      showAlert('Produit requis', 'Enregistrez d\'abord le produit avant d\'ajouter une vidéo.');
       return;
     }
     const asset = await pickVideoForUpload();
@@ -96,7 +90,7 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
     // Validation taille/durée
     const validationError = validateVideoAsset(asset);
     if (validationError) {
-      Alert.alert('Vidéo non valide', validationError);
+      showAlert('Vidéo non valide', validationError);
       return;
     }
 
@@ -105,7 +99,7 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
     setUploading(false);
 
     if (!uploaded) {
-      Alert.alert('Échec', 'Impossible de téléverser la vidéo. Réessayez.');
+      showAlert('Échec', 'Impossible de téléverser la vidéo. Réessayez.');
       return;
     }
 
@@ -117,8 +111,8 @@ export function ProductVideoPickerScreen({ navigation, route }: ProductVideoPick
       durationSec: asset.duration ? Math.round(asset.duration / 1000) : null,
     });
     setSaving(false);
-    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
-    Alert.alert('Vidéo ajoutée ✓', 'Votre vidéo a été téléversée.', [
+    if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
+    showAlert('Vidéo ajoutée ✓', 'Votre vidéo a été téléversée.', [
       { text: 'OK', onPress: () => navigation.navigate(returnTo, { productId }) },
     ]);
   };

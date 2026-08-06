@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { getBuyerOrders } from '@/lib/dataService';
+import { getOrder } from '@/lib/dataService';
 import { ORDER_TIMELINE, getOrderStatusInfo } from '@/lib/orderStatus';
 import { formatFCFA, formatDateTime } from '@/lib/format';
 import type { Order } from '@/types/models';
@@ -21,9 +21,7 @@ export function OrderConfirmationScreen({ navigation, route }: OrderConfirmation
 
   useEffect(() => {
     (async () => {
-      const orders = await getBuyerOrders('demo-buyer');
-      const found = orders.find((o) => o.id === orderId) ?? orders[0];
-      setOrder(found ?? null);
+      setOrder(await getOrder(orderId));
     })();
   }, [orderId]);
 

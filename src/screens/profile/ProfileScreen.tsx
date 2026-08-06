@@ -1,9 +1,10 @@
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface ProfileScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void };
@@ -19,6 +20,31 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     { icon: 'help-circle', label: 'Aide & support', screen: 'HelpCenter', color: colors.success },
     { icon: 'settings', label: 'Paramètres', screen: 'Settings', color: colors.textMuted },
   ];
+
+  // Le profil est accessible depuis la vitrine publique : sans compte, on
+  // propose la connexion plutôt qu'un écran vide.
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <EmptyState
+          icon="user"
+          title="Rejoignez Boutikplus"
+          message="Créez un compte pour commander, discuter et ouvrir votre boutique"
+          action={
+            <View style={{ marginTop: spacing.lg, width: '100%' }}>
+              <Button label="Créer un compte" onPress={() => navigation.navigate('Register')} />
+              <Button
+                label="Se connecter"
+                variant="outline"
+                onPress={() => navigation.navigate('Login')}
+                style={{ marginTop: spacing.sm }}
+              />
+            </View>
+          }
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -61,12 +87,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         ) : (
           <Pressable
             style={styles.becomeSeller}
-            onPress={() =>
-              Alert.alert(
-                'Devenir vendeur',
-                "Pour devenir vendeur, créez votre boutique depuis l'onglet « Espace vendeur » ou contactez le support Boutikplus.",
-              )
-            }
+            onPress={() => navigation.navigate('CreateShop')}
           >
             <Feather name="briefcase" size={22} color={colors.secondary} />
             <View style={{ flex: 1 }}>

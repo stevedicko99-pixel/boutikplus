@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -14,13 +14,15 @@ import { formatFCFA } from '@/lib/format';
 import { friendlyMessage } from '@/lib/errorMessages';
 import { CITY_LIST } from '@/constants/cities';
 import type { DeliveryAddress, DiscountValidationResult } from '@/types/models';
+import { showAlert } from '@/lib/dialog';
+import { DELIVERY_FEE_PER_SELLER } from '@/constants/delivery';
 
 interface CheckoutScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
 }
 
 export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
-  const { sellerGroups, total, clear } = useCart();
+  const { sellerGroups, removeItems } = useCart();
   const { profile } = useAuth();
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
   const [selectedAddr, setSelectedAddr] = useState<string | null>(null);
@@ -28,6 +30,10 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   const [showAddrForm, setShowAddrForm] = useState(false);
   const [newAddr, setNewAddr] = useState({ city: CITY_LIST[0], district: '', instructions: '', phone: profile?.phone ?? '' });
   const [loading, setLoading] = useState(false);
+  // Livraison optionnelle : l'acheteur peut préférer retirer sa commande.
+  const [wantsDelivery, setWantsDelivery] = useState(true);
+  // Paiement partiel : l'acheteur choisit les boutiques à payer maintenant.
+  const [selectedSellers, setSelectedSellers] = useState<string[]>([]);
 
   // Code promo
   const [promoInput, setPromoInput] = useState('');
@@ -44,19 +50,51 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
     if (profile) loadAddresses();
   }, [profile]);
 
-  const loadAddresses = async () => {
+  // Par défaut tout le panier est sélectionné ; on suit les vendeurs encore présents.
+  useEffect(() => {
+    const ids = sellerGroups.map((g) => g.sellerId);
+    setSelectedSellers((prev) => {
+      const kept = prev.filter((id) => ids.includes(id));
+      return kept.length ? kept : ids;
+    });
+  }, [sellerGroups]);
+
+  const selectedGroups = sellerGroups.filter((g) =>
+    selectedSellers.includes(g.sellerId),
+  );
+
+  const toggleSeller = (sellerId: string) => {
+    setSelectedSellers((prev) =>
+      prev.includes(sellerId)
+        ? prev.filter((id) => id !== sellerId)
+        : [...prev, sellerId],
+    );
+  };
+
+  const loadAddresses = async (preferDistrict?: string) => {
     const addrs = await getAddresses(profile!.id);
     setAddresses(addrs);
-    const def = addrs.find((a) => a.is_default) ?? addrs[0];
+    const preferred = preferDistrict
+      ? addrs.find((a) => a.district === preferDistrict)
+      : undefined;
+    const def = preferred ?? addrs.find((a) => a.is_default) ?? addrs[0];
     if (def) setSelectedAddr(def.id);
+  };
+
+  const buildNote = (shopName?: string) => {
+    const parts = [note.trim()];
+    if (!wantsDelivery) parts.push(`Retrait sur place${shopName ? ` (${shopName})` : ''}`);
+    const merged = parts.filter(Boolean).join(' — ');
+    return merged || null;
   };
 
   const handleSaveAddr = async () => {
     if (!newAddr.district || !newAddr.phone) {
-      Alert.alert('Erreur', 'Veuillez remplir le quartier et le téléphone');
+      showAlert('Champs manquants', 'Veuillez remplir le quartier et le téléphone');
       return;
     }
-    await saveAddress({
+    setLoading(true);
+    const { error } = await saveAddress({
       city: newAddr.city,
       district: newAddr.district,
       instructions: newAddr.instructions,
@@ -64,9 +102,15 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
       user_id: profile!.id,
       is_default: addresses.length === 0,
     });
+    setLoading(false);
+    if (error) {
+      showAlert('Adresse non enregistrée', friendlyMessage(error));
+      return;
+    }
+    const savedDistrict = newAddr.district;
     setShowAddrForm(false);
     setNewAddr({ city: CITY_LIST[0], district: '', instructions: '', phone: profile?.phone ?? '' });
-    await loadAddresses();
+    await loadAddresses(savedDistrict);
   };
 
   // Tente de valider le code promo saisi contre chaque boutique du panier.
@@ -92,7 +136,7 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         }
       | null = null;
 
-    for (const group of sellerGroups) {
+    for (const group of selectedGroups) {
       const shopId = group.shop?.id;
       if (!shopId) continue;
       const result = await validateDiscountCode({
@@ -130,17 +174,34 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   const discountAmount = appliedPromo?.result.discount_amount ?? 0;
 
   const handlePlaceOrder = async () => {
-    if (!profile || sellerGroups.length === 0) return;
+    if (!profile) {
+      showAlert('Connexion requise', 'Connectez-vous pour finaliser votre commande.');
+      navigation.navigate('Login');
+      return;
+    }
+    if (selectedGroups.length === 0) {
+      showAlert('Aucun article sélectionné', 'Choisissez au moins une boutique à payer maintenant.');
+      return;
+    }
+    // Une adresse n'est indispensable que si l'acheteur demande la livraison :
+    // sans ce contrôle, l'étape suivante échouait sans explication.
+    if (wantsDelivery && !selectedAddr) {
+      showAlert('Adresse manquante', 'Ajoutez et sélectionnez une adresse de livraison, ou choisissez le retrait.');
+      return;
+    }
     setLoading(true);
     const orderIds: string[] = [];
     let redeemedOrderId: string | null = null;
-    for (const group of sellerGroups) {
+    for (const group of selectedGroups) {
       // Applique la réduction sur le sous-total de la boutique concernée
       const groupDiscount =
         appliedPromo && appliedPromo.sellerId === group.sellerId
           ? appliedPromo.result.discount_amount
           : 0;
-      const groupTotal = Math.max(0, group.subtotal - groupDiscount);
+      const groupTotal = Math.max(
+        0,
+        group.subtotal - groupDiscount + (wantsDelivery ? DELIVERY_FEE_PER_SELLER : 0),
+      );
       const { orderId, error } = await createOrder({
         buyerId: profile.id,
         sellerId: group.sellerId,
@@ -150,11 +211,11 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
           unit_price: l.product.price,
         })),
         totalAmount: groupTotal,
-        addressId: selectedAddr,
-        note: note || null,
+        addressId: wantsDelivery ? selectedAddr : null,
+        note: buildNote(group.shop?.name),
       });
       if (error) {
-        Alert.alert('Erreur', friendlyMessage(error));
+        showAlert('Commande impossible', friendlyMessage(error));
         setLoading(false);
         return;
       }
@@ -177,14 +238,22 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
       }).catch((e) => console.error('redeemDiscountCode:', e));
     }
 
-    clear();
+    // Seules les lignes commandées quittent le panier (paiement partiel).
+    removeItems(
+      selectedGroups.flatMap((g) => g.lines.map((l) => l.product.id)),
+    );
     setLoading(false);
-    // Pour la démo, on va au paiement du premier order
-    navigation.navigate('Payment', { orderId: orderIds[0] });
+    if (orderIds.length === 0) return;
+    // Une commande par boutique : on enchaîne les paiements Mobile Money.
+    navigation.navigate('Payment', {
+      orderId: orderIds[0],
+      remainingOrderIds: orderIds.slice(1),
+    });
   };
 
-  const deliveryFee = sellerGroups.length * 1000;
-  const grandTotal = Math.max(0, total + deliveryFee - discountAmount);
+  const selectedSubtotal = selectedGroups.reduce((sum, g) => sum + g.subtotal, 0);
+  const deliveryFee = wantsDelivery ? selectedGroups.length * DELIVERY_FEE_PER_SELLER : 0;
+  const grandTotal = Math.max(0, selectedSubtotal + deliveryFee - discountAmount);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -196,7 +265,31 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         <View style={{ width: 24 }} />
       </View>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Mode de réception */}
+        <Text style={styles.sectionTitle}>Livraison</Text>
+        <View style={styles.deliveryToggle}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.deliveryLabel}>
+              {wantsDelivery ? 'Faire livrer ma commande' : 'Retrait chez le vendeur'}
+            </Text>
+            <Text style={styles.deliveryHint}>
+              {wantsDelivery
+                ? `${formatFCFA(DELIVERY_FEE_PER_SELLER)} par boutique`
+                : 'Aucun frais de livraison'}
+            </Text>
+          </View>
+          <Switch
+            value={wantsDelivery}
+            onValueChange={setWantsDelivery}
+            trackColor={{ true: colors.primary, false: colors.border }}
+            thumbColor={colors.surface}
+            accessibilityLabel="Activer la livraison"
+          />
+        </View>
+
         {/* Adresse de livraison */}
+        {wantsDelivery ? (
+        <>
         <Text style={styles.sectionTitle}>Adresse de livraison</Text>
         {addresses.map((addr) => (
           <Pressable
@@ -231,12 +324,24 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
             <Text style={styles.addAddrText}>Ajouter une adresse</Text>
           </Pressable>
         )}
+        </>
+        ) : null}
 
-        {/* Récap par vendeur */}
-        <Text style={styles.sectionTitle}>Récapitulatif</Text>
+        {/* Récap par vendeur — sélection des boutiques à payer maintenant */}
+        <Text style={styles.sectionTitle}>Que payer maintenant ?</Text>
+        <Text style={styles.sectionHint}>
+          Décochez une boutique pour la garder dans le panier et la payer plus tard.
+        </Text>
         {sellerGroups.map((group) => (
           <Card key={group.sellerId} style={styles.recapCard}>
-            <Text style={styles.recapShop}>{group.shop?.name}</Text>
+            <Pressable style={styles.recapHead} onPress={() => toggleSeller(group.sellerId)}>
+              <View style={[styles.checkbox, selectedSellers.includes(group.sellerId) && styles.checkboxChecked]}>
+                {selectedSellers.includes(group.sellerId) ? (
+                  <Feather name="check" size={14} color={colors.textInverse} />
+                ) : null}
+              </View>
+              <Text style={styles.recapShop}>{group.shop?.name}</Text>
+            </Pressable>
             {group.lines.map((line) => (
               <View key={line.product.id} style={styles.recapLine}>
                 <Text style={styles.recapItem} numberOfLines={1}>{line.quantity}× {line.product.name}</Text>
@@ -303,14 +408,21 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
 
         {/* Totaux */}
         <Card style={styles.totalsCard}>
-          <View style={styles.totalRow}><Text style={styles.totalLabel}>Sous-total</Text><Text style={styles.totalValue}>{formatFCFA(total)}</Text></View>
+          <View style={styles.totalRow}><Text style={styles.totalLabel}>Sous-total</Text><Text style={styles.totalValue}>{formatFCFA(selectedSubtotal)}</Text></View>
           {discountAmount > 0 ? (
             <View style={styles.totalRow}>
               <Text style={styles.discountLabel}>Réduction</Text>
               <Text style={styles.discountValue}>−{formatFCFA(discountAmount)}</Text>
             </View>
           ) : null}
-          <View style={styles.totalRow}><Text style={styles.totalLabel}>Livraison ({sellerGroups.length} vendeur{sellerGroups.length > 1 ? 's' : ''})</Text><Text style={styles.totalValue}>{formatFCFA(deliveryFee)}</Text></View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>
+              {wantsDelivery
+                ? `Livraison (${selectedGroups.length} boutique${selectedGroups.length > 1 ? 's' : ''})`
+                : 'Livraison (retrait)'}
+            </Text>
+            <Text style={styles.totalValue}>{formatFCFA(deliveryFee)}</Text>
+          </View>
           <View style={styles.divider} />
           <View style={styles.totalRow}><Text style={styles.grandTotalLabel}>Total à payer</Text><Text style={styles.grandTotal}>{formatFCFA(grandTotal)}</Text></View>
         </Card>
@@ -321,7 +433,13 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
           <Text style={styles.bottomLabel}>Total</Text>
           <Text style={styles.bottomAmount}>{formatFCFA(grandTotal)}</Text>
         </View>
-        <Button label="Payer" onPress={handlePlaceOrder} loading={loading} style={{ flex: 1, marginLeft: spacing.lg }} />
+        <Button
+          label={selectedGroups.length > 1 ? `Payer ${selectedGroups.length} boutiques` : 'Payer'}
+          onPress={handlePlaceOrder}
+          loading={loading}
+          disabled={selectedGroups.length === 0}
+          style={{ flex: 1, marginLeft: spacing.lg }}
+        />
       </View>
     </SafeAreaView>
   );
@@ -332,6 +450,13 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
   title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
   scroll: { padding: spacing.lg, paddingTop: 0, paddingBottom: 120 },
+  deliveryToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
+  deliveryLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.text },
+  deliveryHint: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginTop: 2 },
+  sectionHint: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginBottom: spacing.md, marginTop: -spacing.sm },
+  recapHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  checkbox: { width: 22, height: 22, borderRadius: radius.sm, borderWidth: 2, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: colors.primary },
   sectionTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.md },
   addrCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1.5, borderColor: colors.border },
   addrCardActive: { borderColor: colors.primary, backgroundColor: '#FFF8F0' },
@@ -347,7 +472,7 @@ const styles = StyleSheet.create({
   addAddrBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.md, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radius.lg, marginBottom: spacing.md },
   addAddrText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, color: colors.primary, fontWeight: typography.weights.semibold },
   recapCard: { marginBottom: spacing.md },
-  recapShop: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.secondary, marginBottom: spacing.sm },
+  recapShop: { flex: 1, fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.secondary },
   recapLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   recapItem: { flex: 1, fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.text, marginRight: spacing.sm },
   recapPrice: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },

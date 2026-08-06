@@ -1,13 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Alert,
-  Image,
-} from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -25,6 +17,7 @@ import { FeeEstimate } from '@/components/delivery';
 import { openPhone } from '@/lib/safeLinking';
 import type { DeliveryRequest, PaymentOperatorId } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface DeliveryPaymentScreenProps {
   navigation: {
     goBack: () => void;
@@ -66,7 +59,7 @@ export function DeliveryPaymentScreen({ navigation, route }: DeliveryPaymentScre
   const handleSubmit = async () => {
     if (!delivery) return;
     if (!proofUri) {
-      Alert.alert('Preuve requise', 'Veuillez ajouter une capture de votre paiement.');
+      showAlert('Preuve requise', 'Veuillez ajouter une capture de votre paiement.');
       return;
     }
     setSubmitting(true);
@@ -84,11 +77,11 @@ export function DeliveryPaymentScreen({ navigation, route }: DeliveryPaymentScre
     );
     setSubmitting(false);
     if (error) {
-      Alert.alert('Erreur', friendlyMessage(error));
+      showAlert('Erreur', friendlyMessage(error));
       return;
     }
     await refreshNotifs();
-    Alert.alert(
+    showAlert(
       'Preuve envoyée ✓',
       'Votre preuve de paiement a été envoyée au livreur. Il la vérifiera avant de commencer la livraison.',
       [{ text: 'Suivre la livraison', onPress: () => navigation.replace('DeliveryTracking', { deliveryId: delivery.id }) }],

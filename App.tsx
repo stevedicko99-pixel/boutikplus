@@ -7,6 +7,7 @@ import { NotificationProvider } from '@/context/NotificationContext';
 import { ConnectivityProvider } from '@/context/ConnectivityContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { WebShell } from '@/components/layout/WebShell';
 import { colors } from '@/theme';
 import { StyleSheet } from 'react-native';
 
@@ -20,7 +21,9 @@ export default function App() {
               <ConnectivityProvider>
                 <CartProvider>
                   <StatusBar style="dark" />
-                  <RootNavigator />
+                  <WebShell>
+                    <RootNavigator />
+                  </WebShell>
                 </CartProvider>
               </ConnectivityProvider>
             </NotificationProvider>

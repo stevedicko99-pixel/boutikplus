@@ -1,15 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  Modal,
-  ScrollView,
-  Alert,
-  RefreshControl,
-} from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, Modal, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -32,6 +22,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import type { Shop, DiscountCode } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface DiscountCodeManagementScreenProps {
   navigation: { goBack: () => void };
 }
@@ -106,11 +97,11 @@ export function DiscountCodeManagementScreen({
     if (!shop) return;
     const numValue = parseInt(value, 10);
     if (!code.trim()) {
-      Alert.alert('Erreur', 'Renseignez un code');
+      showAlert('Erreur', 'Renseignez un code');
       return;
     }
     if (isNaN(numValue) || numValue <= 0) {
-      Alert.alert('Erreur', 'Renseignez une valeur valide');
+      showAlert('Erreur', 'Renseignez une valeur valide');
       return;
     }
     setSaving(true);
@@ -129,27 +120,27 @@ export function DiscountCodeManagementScreen({
     });
     setSaving(false);
     if (error) {
-      Alert.alert('Erreur', friendlyMessage(error));
+      showAlert('Erreur', friendlyMessage(error));
       return;
     }
     setShowForm(false);
     resetForm();
     await loadCodes();
-    Alert.alert('Code créé ✓', 'Votre code promo est actif.');
+    showAlert('Code créé ✓', 'Votre code promo est actif.');
   };
 
   const handleTogglePause = async (dc: DiscountCode) => {
     const newStatus = dc.status === 'paused' ? 'active' : 'paused';
     const { error } = await updateDiscountCode(dc.id, { status: newStatus });
     if (error) {
-      Alert.alert('Erreur', friendlyMessage(error));
+      showAlert('Erreur', friendlyMessage(error));
       return;
     }
     await loadCodes();
   };
 
   const handleDelete = (dc: DiscountCode) => {
-    Alert.alert(
+    showAlert(
       'Supprimer le code',
       `Voulez-vous vraiment supprimer le code « ${dc.code} » ?`,
       [
@@ -168,7 +159,7 @@ export function DiscountCodeManagementScreen({
 
   const handleCopy = async (dc: DiscountCode) => {
     await Clipboard.setStringAsync(dc.code);
-    Alert.alert('Copié ✓', `Code ${dc.code} copié.`);
+    showAlert('Copié ✓', `Code ${dc.code} copié.`);
   };
 
   return (

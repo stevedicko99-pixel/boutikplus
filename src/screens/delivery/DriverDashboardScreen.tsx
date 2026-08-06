@@ -1,13 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  Alert,
-} from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -30,6 +22,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import type { DriverProfile, DeliveryRequest } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface DriverDashboardScreenProps {
   navigation: { goBack: () => void; navigate: (screen: string, params?: Record<string, unknown>) => void };
 }
@@ -81,12 +74,12 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
     setToggling(true);
     const { error } = await setDriverAvailability(driver.id, !driver.is_available);
     setToggling(false);
-    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
+    if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
     setDriver({ ...driver, is_available: !driver.is_available });
   };
 
   const handleAccept = (delivery: DeliveryRequest) => {
-    Alert.alert(
+    showAlert(
       'Accepter cette livraison ?',
       `Vous recevrez ${formatFCFA(delivery.price)} pour cette course de ${delivery.pickup_city} → ${delivery.destination_city}.`,
       [
@@ -95,7 +88,7 @@ export function DriverDashboardScreen({ navigation }: DriverDashboardScreenProps
           text: 'Accepter',
           onPress: async () => {
             const { error } = await acceptDelivery(delivery.id, userId);
-            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
+            if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
             await load();
           },
         },

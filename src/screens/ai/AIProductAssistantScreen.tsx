@@ -1,13 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -18,6 +10,7 @@ import { CATEGORIES, getCategoryName } from '@/constants/categories';
 import { pickAndCompressImage } from '@/lib/storage';
 import { generateProductSuggestion, suggestPrice } from '@/lib/aiService';
 
+import { showAlert } from '@/lib/dialog';
 interface AIProductAssistantScreenProps {
   navigation: { goBack: () => void };
   route: { params?: { onProductGenerated?: (data: { name: string; description: string; categoryId: string; price: number }) => void } };
@@ -68,7 +61,7 @@ export function AIProductAssistantScreen({ navigation, route }: AIProductAssista
       });
       setStep('result');
     } catch {
-      Alert.alert('Erreur', 'Impossible de générer les suggestions. Réessayez.');
+      showAlert('Erreur', 'Impossible de générer les suggestions. Réessayez.');
       setStep('photo');
     }
   };

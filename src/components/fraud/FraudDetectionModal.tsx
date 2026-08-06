@@ -1,19 +1,12 @@
 import { useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  Pressable,
-  Modal,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import { StyleSheet, View, Text, Pressable, Modal, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { detectPaymentFraude, type FraudDetectionResult } from '@/lib/aiService';
 
+import { showAlert } from '@/lib/dialog';
 interface FraudDetectionModalProps {
   visible: boolean;
   imageUrl: string | null;
@@ -42,7 +35,7 @@ export function FraudDetectionModal({
       const res = await detectPaymentFraude(imageUrl, expectedAmount);
       setResult(res);
     } catch {
-      Alert.alert('Erreur', 'Impossible d\'analyser l\'image');
+      showAlert('Erreur', 'Impossible d\'analyser l\'image');
     }
     setAnalyzing(false);
   };

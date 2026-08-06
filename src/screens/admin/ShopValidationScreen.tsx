@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getPendingShops } from '@/lib/dataService';
+import { getPendingShops, setShopStatus, deleteShop } from '@/lib/dataService';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { getCategoryName } from '@/constants/categories';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +13,21 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { formatRelativeDate } from '@/lib/format';
-import type { Shop } from '@/types/models';
+import type { Shop, ShopStatus } from '@/types/models';
+
+import { showAlert, confirmAction } from '@/lib/dialog';
+
+const STATUS_LABEL: Record<ShopStatus, string> = {
+  active: 'Approuvée',
+  pending: 'En attente',
+  paused: 'Refusée',
+};
+
+const STATUS_COLOR: Record<ShopStatus, { color: string; bg: string }> = {
+  active: { color: colors.success, bg: '#E6F7EE' },
+  pending: { color: colors.warning, bg: '#FFF8E1' },
+  paused: { color: colors.danger, bg: '#FDECEC' },
+};
 
 interface ShopValidationScreenProps {
   navigation: { goBack: () => void };
@@ -21,6 +36,7 @@ interface ShopValidationScreenProps {
 export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const data = await getPendingShops();
@@ -30,27 +46,52 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
 
   useEffect(() => { load(); }, [load]);
 
-  const handleAction = (shop: Shop, action: 'approve' | 'reject') => {
-    Alert.alert(action === 'approve' ? 'Valider' : 'Refuser', `${action === 'approve' ? 'Valider' : 'Refuser'} la boutique "${shop.name}" ?`, [
-      { text: 'Annuler' },
-      { text: action === 'approve' ? 'Valider ✓' : 'Refuser', style: action === 'approve' ? 'default' : 'destructive', onPress: () => {
-        setShops((prev) => prev.filter((s) => s.id !== shop.id));
-        Alert.alert('Terminé', action === 'approve' ? 'Boutique validée' : 'Boutique refusée');
-      } },
-    ]);
+  const handleAction = async (shop: Shop, action: 'approve' | 'reject') => {
+    const status: ShopStatus = action === 'approve' ? 'active' : 'paused';
+    const ok = await confirmAction(
+      action === 'approve' ? 'Approuver la boutique' : 'Refuser la boutique',
+      `${action === 'approve' ? 'Approuver' : 'Refuser'} "${shop.name}" ?`,
+      action === 'approve' ? 'Approuver' : 'Refuser',
+    );
+    if (!ok) return;
+    setBusyId(shop.id);
+    const { error } = await setShopStatus(shop.id, status);
+    setBusyId(null);
+    if (error) {
+      showAlert('Action impossible', friendlyMessage(error));
+      return;
+    }
+    setShops((prev) => prev.map((s) => (s.id === shop.id ? { ...s, status } : s)));
+  };
+
+  const handleDelete = async (shop: Shop) => {
+    const ok = await confirmAction(
+      'Supprimer la boutique',
+      `Supprimer définitivement "${shop.name}" et tous ses produits ?`,
+      'Supprimer',
+    );
+    if (!ok) return;
+    setBusyId(shop.id);
+    const { error } = await deleteShop(shop.id);
+    setBusyId(null);
+    if (error) {
+      showAlert('Suppression impossible', friendlyMessage(error));
+      return;
+    }
+    setShops((prev) => prev.filter((s) => s.id !== shop.id));
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={navigation.goBack} hitSlop={10}><Feather name="arrow-left" size={24} color={colors.text} /></Pressable>
-        <Text style={styles.title}>Validation boutiques</Text>
+        <Text style={styles.title}>Boutiques</Text>
         <View style={{ width: 24 }} />
       </View>
       {loading ? (
         <LoadingSpinner />
       ) : shops.length === 0 ? (
-        <EmptyState icon="check-circle" title="Tout est à jour" message="Aucune boutique en attente de validation" />
+        <EmptyState icon="check-circle" title="Aucune boutique" message="Aucune boutique à modérer pour le moment" />
       ) : (
         <FlatList
           data={shops}
@@ -65,7 +106,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
                   <Text style={styles.shopMeta}>{shop.city} · {getCategoryName(shop.category_id)}</Text>
                   <Text style={styles.shopDate}>Créée {formatRelativeDate(shop.created_at)}</Text>
                 </View>
-                <Badge label="En attente" color={colors.warning} bgColor="#FFF8E1" />
+                <Badge label={STATUS_LABEL[shop.status]} color={STATUS_COLOR[shop.status].color} bgColor={STATUS_COLOR[shop.status].bg} />
               </View>
               {shop.description ? <Text style={styles.shopDesc} numberOfLines={2}>{shop.description}</Text> : null}
               <View style={styles.payRow}>
@@ -75,8 +116,29 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
                 </Text>
               </View>
               <View style={styles.actionRow}>
-                <Button label="Refuser" variant="outline" onPress={() => handleAction(shop, 'reject')} style={{ flex: 1 }} size="sm" />
-                <Button label="Valider" onPress={() => handleAction(shop, 'approve')} style={{ flex: 1, marginLeft: spacing.sm }} size="sm" />
+                <Button
+                  label="Refuser"
+                  variant="outline"
+                  onPress={() => handleAction(shop, 'reject')}
+                  disabled={busyId === shop.id || shop.status === 'paused'}
+                  style={{ flex: 1 }}
+                  size="sm"
+                />
+                <Button
+                  label="Approuver"
+                  onPress={() => handleAction(shop, 'approve')}
+                  disabled={busyId === shop.id || shop.status === 'active'}
+                  style={{ flex: 1, marginLeft: spacing.sm }}
+                  size="sm"
+                />
+                <Pressable
+                  style={styles.deleteBtn}
+                  onPress={() => handleDelete(shop)}
+                  disabled={busyId === shop.id}
+                  accessibilityLabel={`Supprimer la boutique ${shop.name}`}
+                >
+                  <Feather name="trash-2" size={16} color={colors.danger} />
+                </Pressable>
               </View>
             </Card>
           )}
@@ -100,5 +162,6 @@ const styles = StyleSheet.create({
   shopDesc: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted, lineHeight: 20, marginBottom: spacing.sm },
   payRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: '#E6F7EE', borderRadius: radius.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
   payText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.success, fontWeight: typography.weights.medium },
-  actionRow: { flexDirection: 'row', marginTop: spacing.sm },
+  actionRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
+  deleteBtn: { width: 36, height: 36, borderRadius: radius.md, backgroundColor: '#FDECEC', alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm },
 });

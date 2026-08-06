@@ -30,6 +30,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { openPhone } from '@/lib/safeLinking';
 import type { DeliveryRequest, DeliveryStatus } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface DeliveryTrackingScreenProps {
   navigation: { goBack: () => void; navigate: (screen: string, params?: Record<string, unknown>) => void };
   route: { params: { deliveryId: string } };
@@ -80,10 +81,10 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
         setActing(true);
         const { error } = await cancelDelivery(delivery.id, role, reason || undefined);
         setActing(false);
-        if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
+        if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
         await refreshAfterAction();
       },
-    ) ?? Alert.alert(
+    ) ?? showAlert(
       'Annuler la livraison',
       'Voulez-vous vraiment annuler cette livraison ?',
       [
@@ -95,7 +96,7 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
             setActing(true);
             const { error } = await cancelDelivery(delivery.id, role);
             setActing(false);
-            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
+            if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
             await refreshAfterAction();
           },
         },
@@ -105,7 +106,7 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
 
   const handleRefund = () => {
     if (!delivery) return;
-    Alert.alert(
+    showAlert(
       'Demander un remboursement',
       'Un remboursement sera demandé pour cette livraison. Le litige sera traité par l\'administration.',
       [
@@ -117,9 +118,9 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
             setActing(true);
             const { error } = await requestRefund(delivery.id, 'Litige signalé par le vendeur');
             setActing(false);
-            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
+            if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
             await refreshAfterAction();
-            Alert.alert('Demande envoyée', 'Votre demande de remboursement a été enregistrée.');
+            showAlert('Demande envoyée', 'Votre demande de remboursement a été enregistrée.');
           },
         },
       ],
@@ -131,9 +132,9 @@ export function DeliveryTrackingScreen({ navigation, route }: DeliveryTrackingSc
     setActing(true);
     const { error } = await validateDeliveryPayment(delivery.id);
     setActing(false);
-    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
+    if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
     await refreshAfterAction();
-    Alert.alert('Paiement validé ✓', 'Le paiement a été confirmé.');
+    showAlert('Paiement validé ✓', 'Le paiement a été confirmé.');
   };
 
   const handlePay = () => {

@@ -1,10 +1,11 @@
 import { useState, useEffect, createContext, useContext, useCallback, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
+import { showAlert } from '@/lib/dialog';
 // Contexte de connectivité et mode hors-ligne
 
 interface ConnectivityContextValue {
@@ -38,7 +39,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
   const syncPendingActions = useCallback(async () => {
     // Simule la synchronisation
     if (pendingActions.length === 0) return;
-    Alert.alert(
+    showAlert(
       'Synchronisation',
       `${pendingActions.length} action(s) en attente synchronisée(s) avec succès !`,
     );

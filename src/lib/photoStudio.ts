@@ -8,6 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform, Alert } from 'react-native';
 
+import { showAlert } from '@/lib/dialog';
 // ============================================================
 // Types
 // ============================================================
@@ -170,7 +171,7 @@ export async function pickWithChoice(
   // Sur natif, on propose un choix via Alert. (Alert est importé statiquement ;
   // react-native est déjà bundlé, aucun surcoût.)
   return new Promise<string | null>((resolve) => {
-    Alert.alert(
+    showAlert(
       'Ajouter une photo',
       'Choisissez la source de l\'image.',
       [
@@ -188,7 +189,6 @@ export async function pickWithChoice(
           onPress: async () => resolve(await pickForEdit(true, aspect)),
         },
       ],
-      { cancelable: true, onDismiss: () => resolve(null) },
     );
   });
 }

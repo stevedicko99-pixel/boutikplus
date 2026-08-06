@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, ScrollView, Alert, Modal } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, ScrollView, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ import { notifyPaymentValidated, notifyProofUploaded } from '@/lib/notifications
 import { PAYMENT_OPERATORS } from '@/constants/payment';
 import type { Order, OrderItem, Payment, OrderStatus } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface SellerOrdersScreenProps {
   navigation: { goBack: () => void };
 }
@@ -46,7 +47,7 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
   useEffect(() => { load(); }, [load]);
 
   const handleValidate = (order: Order) => {
-    Alert.alert('Valider le paiement', `Confirmer la réception de ${formatFCFA(order.total_amount)} ?`, [
+    showAlert('Valider le paiement', `Confirmer la réception de ${formatFCFA(order.total_amount)} ?`, [
       { text: 'Annuler' },
       { text: 'Confirmer ✓', onPress: async () => {
         await validatePayment(order.id);
@@ -57,7 +58,7 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
   };
 
   const handleReject = (order: Order) => {
-    Alert.alert('Refuser le paiement', 'Le paiement sera refusé et la commande annulée.', [
+    showAlert('Refuser le paiement', 'Le paiement sera refusé et la commande annulée.', [
       { text: 'Annuler' },
       { text: 'Refuser', style: 'destructive', onPress: async () => { await rejectPayment(order.id); await load(); } },
     ]);

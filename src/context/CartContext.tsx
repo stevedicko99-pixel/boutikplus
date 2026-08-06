@@ -27,6 +27,7 @@ interface CartContextValue {
   sellerGroups: CartSellerGroup[];
   addItem: (product: ProductWithImages, quantity?: number) => void;
   removeItem: (productId: string) => void;
+  removeItems: (productIds: string[]) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clear: () => void;
   hasProduct: (productId: string) => boolean;
@@ -54,6 +55,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const removeItem = useCallback((productId: string) => {
     setItems((prev) => prev.filter((l) => l.product.id !== productId));
+  }, []);
+
+  // Utilisé après un paiement partiel : seules les lignes commandées quittent
+  // le panier, le reste demeure disponible pour un paiement ultérieur.
+  const removeItems = useCallback((productIds: string[]) => {
+    const ids = new Set(productIds);
+    setItems((prev) => prev.filter((l) => !ids.has(l.product.id)));
   }, []);
 
   const updateQuantity = useCallback(
@@ -109,6 +117,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         sellerGroups,
         addItem,
         removeItem,
+        removeItems,
         updateQuantity,
         clear,
         hasProduct,

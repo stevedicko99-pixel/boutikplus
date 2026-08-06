@@ -2,17 +2,15 @@
 // Bascule automatiquement entre Supabase (si configuré) et les données de démo.
 
 import { supabase, isSupabaseConfigured } from './supabase';
+import { DEMO_CATEGORIES, DEMO_REVIEWS } from '@/data/demoData';
 import {
-  DEMO_CATEGORIES,
-  DEMO_SHOPS,
-  DEMO_PRODUCTS,
-  DEMO_REVIEWS,
-  DEMO_PROMOTIONS,
-  DEMO_ORDERS,
-  DEMO_ADDRESSES,
-  DEMO_CONVERSATIONS,
-  DEMO_MESSAGES,
-} from '@/data/demoData';
+  demoStore,
+  demoId,
+  demoUpdateProduct,
+  demoDeleteProduct,
+  demoUpdateShop,
+  demoDeleteShop,
+} from '@/data/demoStore';
 import type {
   Category,
   Shop,
@@ -27,6 +25,7 @@ import type {
   Conversation,
   Message,
   OrderStatus,
+  ShopStatus,
   PaymentOperatorId,
   UserRole,
   ProductStatus,
@@ -69,7 +68,7 @@ export async function getShops(filters?: {
 }): Promise<Shop[]> {
   if (useDemo) {
     await delay(200);
-    let result = [...DEMO_SHOPS];
+    let result = demoStore.shops.filter((s) => s.status === 'active');
     if (filters?.categoryId)
       result = result.filter((s) => s.category_id === filters.categoryId);
     if (filters?.city) result = result.filter((s) => s.city === filters.city);
@@ -99,7 +98,7 @@ export async function getShops(filters?: {
 export async function getShop(shopId: string): Promise<Shop | null> {
   if (useDemo) {
     await delay(150);
-    return DEMO_SHOPS.find((s) => s.id === shopId) ?? null;
+    return demoStore.shops.find((s) => s.id === shopId) ?? null;
   }
   const { data, error } = await supabase
     .from('shops')
@@ -113,7 +112,7 @@ export async function getShop(shopId: string): Promise<Shop | null> {
 export async function getShopByOwner(ownerId: string): Promise<Shop | null> {
   if (useDemo) {
     await delay(100);
-    return DEMO_SHOPS.find((s) => s.owner_id === ownerId) ?? null;
+    return demoStore.shops.find((s) => s.owner_id === ownerId) ?? null;
   }
   const { data, error } = await supabase
     .from('shops')
@@ -130,7 +129,7 @@ export async function getProducts(
 ): Promise<ProductWithImages[]> {
   if (useDemo) {
     await delay(250);
-    let result = [...DEMO_PRODUCTS];
+    let result = demoStore.products.filter((p) => p.status === 'available');
     if (filters?.categoryId)
       result = result.filter((p) => p.category_id === filters.categoryId);
     if (filters?.city)
@@ -169,7 +168,7 @@ export async function getProduct(
 ): Promise<ProductWithImages | null> {
   if (useDemo) {
     await delay(150);
-    return DEMO_PRODUCTS.find((p) => p.id === productId) ?? null;
+    return demoStore.products.find((p) => p.id === productId) ?? null;
   }
   const { data, error } = await supabase
     .from('products')
@@ -185,7 +184,7 @@ export async function getProductsByShop(
 ): Promise<ProductWithImages[]> {
   if (useDemo) {
     await delay(200);
-    return DEMO_PRODUCTS.filter((p) => p.shop_id === shopId);
+    return demoStore.products.filter((p) => p.shop_id === shopId);
   }
   const { data, error } = await supabase
     .from('products')
@@ -234,7 +233,7 @@ export async function addReview(review: {
 export async function getActivePromotions(): Promise<Promotion[]> {
   if (useDemo) {
     await delay(150);
-    return DEMO_PROMOTIONS;
+    return demoStore.promotions;
   }
   const { data, error } = await supabase
     .from('promotions')
@@ -250,7 +249,7 @@ export async function getActivePromotions(): Promise<Promotion[]> {
 export async function getAddresses(userId: string): Promise<DeliveryAddress[]> {
   if (useDemo) {
     await delay(150);
-    return DEMO_ADDRESSES.filter((a) => a.user_id === userId);
+    return demoStore.addresses.filter((a) => a.user_id === userId);
   }
   const { data, error } = await supabase
     .from('delivery_addresses')
@@ -269,6 +268,21 @@ export async function saveAddress(
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(200);
+    if (address.id) {
+      const index = demoStore.addresses.findIndex((a) => a.id === address.id);
+      if (index >= 0) {
+        demoStore.addresses[index] = {
+          ...demoStore.addresses[index],
+          ...address,
+        } as DeliveryAddress;
+      }
+      return { error: null };
+    }
+    demoStore.addresses.push({
+      ...address,
+      id: demoId('addr'),
+      created_at: new Date().toISOString(),
+    } as DeliveryAddress);
     return { error: null };
   }
   if (address.id) {
@@ -285,7 +299,10 @@ export async function saveAddress(
 }
 
 export async function deleteAddress(id: string): Promise<void> {
-  if (useDemo) return;
+  if (useDemo) {
+    demoStore.addresses = demoStore.addresses.filter((a) => a.id !== id);
+    return;
+  }
   await supabase.from('delivery_addresses').delete().eq('id', id);
 }
 
@@ -295,10 +312,14 @@ export async function getBuyerOrders(
 ): Promise<(Order & { items: OrderItem[]; payment?: Payment; shop?: Shop })[]> {
   if (useDemo) {
     await delay(200);
-    return DEMO_ORDERS.filter((o) => o.buyer_id === buyerId).map((o) => ({
-      ...o,
-      shop: DEMO_SHOPS.find((s) => s.id === o.items[0]?.product?.shop_id),
-    }));
+    return demoStore.orders
+      .filter((o) => o.buyer_id === buyerId)
+      .map((o) => ({
+        ...o,
+        shop: demoStore.shops.find(
+          (s) => s.id === o.items[0]?.product?.shop_id,
+        ),
+      }));
   }
   const { data, error } = await supabase
     .from('orders')
@@ -314,7 +335,7 @@ export async function getSellerOrders(
 ): Promise<(Order & { items: OrderItem[]; payment?: Payment })[]> {
   if (useDemo) {
     await delay(200);
-    return DEMO_ORDERS.filter((o) => o.seller_id === sellerId);
+    return demoStore.orders.filter((o) => o.seller_id === sellerId);
   }
   const { data, error } = await supabase
     .from('orders')
@@ -335,7 +356,27 @@ export async function createOrder(params: {
 }): Promise<{ orderId: string | null; error: string | null }> {
   if (useDemo) {
     await delay(300);
-    const id = `order-demo-${Date.now()}`;
+    const id = demoId('order');
+    const now = new Date().toISOString();
+    demoStore.orders.unshift({
+      id,
+      buyer_id: params.buyerId,
+      seller_id: params.sellerId,
+      total_amount: params.totalAmount,
+      delivery_address_id: params.addressId,
+      status: 'pending_payment',
+      note: params.note ?? null,
+      created_at: now,
+      updated_at: now,
+      items: params.items.map((it) => ({
+        id: demoId('oi'),
+        order_id: id,
+        product_id: it.product_id,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        product: demoStore.products.find((p) => p.id === it.product_id),
+      })),
+    });
     return { orderId: id, error: null };
   }
   const { data, error } = await supabase
@@ -370,6 +411,19 @@ export async function uploadPaymentProof(
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(300);
+    const order = demoStore.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Commande introuvable' };
+    order.payment = {
+      id: demoId('pay'),
+      order_id: orderId,
+      amount,
+      operator,
+      proof_image_url: proofImageUrl,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      validated_at: null,
+    };
+    order.status = 'proof_uploaded';
     return { error: null };
   }
   const { error } = await supabase.from('payments').insert({
@@ -392,6 +446,13 @@ export async function validatePayment(
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(300);
+    const order = demoStore.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Commande introuvable' };
+    if (order.payment) {
+      order.payment.status = 'validated';
+      order.payment.validated_at = new Date().toISOString();
+    }
+    order.status = 'payment_validated';
     return { error: null };
   }
   const { error: payErr } = await supabase
@@ -411,6 +472,10 @@ export async function rejectPayment(
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(300);
+    const order = demoStore.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Commande introuvable' };
+    if (order.payment) order.payment.status = 'rejected';
+    order.status = 'cancelled';
     return { error: null };
   }
   const { error } = await supabase
@@ -428,6 +493,10 @@ export async function updateOrderStatus(
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(200);
+    const order = demoStore.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Commande introuvable' };
+    order.status = status;
+    order.updated_at = new Date().toISOString();
     return { error: null };
   }
   const { error } = await supabase
@@ -443,7 +512,9 @@ export async function getConversations(
 ): Promise<Conversation[]> {
   if (useDemo) {
     await delay(150);
-    return DEMO_CONVERSATIONS;
+    return demoStore.conversations.filter(
+      (c) => c.buyer_id === userId || c.seller_id === userId,
+    );
   }
   const { data, error } = await supabase
     .from('conversations')
@@ -457,7 +528,9 @@ export async function getConversations(
 export async function getMessages(conversationId: string): Promise<Message[]> {
   if (useDemo) {
     await delay(150);
-    return DEMO_MESSAGES.filter((m) => m.conversation_id === conversationId);
+    return demoStore.messages.filter(
+      (m) => m.conversation_id === conversationId,
+    );
   }
   const { data, error } = await supabase
     .from('messages')
@@ -476,8 +549,8 @@ export async function sendMessage(
 ): Promise<Message | null> {
   if (useDemo) {
     await delay(100);
-    return {
-      id: `m-demo-${Date.now()}`,
+    const message: Message = {
+      id: demoId('msg'),
       conversation_id: conversationId,
       sender_id: senderId,
       content,
@@ -485,6 +558,8 @@ export async function sendMessage(
       created_at: new Date().toISOString(),
       read: false,
     };
+    demoStore.messages.push(message);
+    return message;
   }
   const { data, error } = await supabase
     .from('messages')
@@ -505,14 +580,32 @@ export async function findOrCreateConversation(
   sellerId: string,
   shopId: string,
 ): Promise<string | null> {
-  if (useDemo) return DEMO_CONVERSATIONS[0]?.id ?? 'conv-1';
+  if (useDemo) {
+    const existingDemo = demoStore.conversations.find(
+      (c) =>
+        c.buyer_id === buyerId &&
+        c.seller_id === sellerId &&
+        c.shop_id === shopId,
+    );
+    if (existingDemo) return existingDemo.id;
+    const conversation: Conversation = {
+      id: demoId('conv'),
+      buyer_id: buyerId,
+      seller_id: sellerId,
+      shop_id: shopId,
+      created_at: new Date().toISOString(),
+      shop: demoStore.shops.find((s) => s.id === shopId),
+    };
+    demoStore.conversations.unshift(conversation);
+    return conversation.id;
+  }
   const { data: existing } = await supabase
     .from('conversations')
     .select('id')
     .eq('buyer_id', buyerId)
     .eq('seller_id', sellerId)
     .eq('shop_id', shopId)
-    .single();
+    .maybeSingle();
   if (existing) return existing.id;
   const { data, error } = await supabase
     .from('conversations')
@@ -535,6 +628,26 @@ export async function createProduct(params: {
 }): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(300);
+    const id = demoId('prod');
+    demoStore.products.unshift({
+      id,
+      shop_id: params.shopId,
+      name: params.name,
+      description: params.description,
+      price: params.price,
+      category_id: params.categoryId,
+      stock: params.stock,
+      status: params.stock > 0 ? 'available' : 'out_of_stock',
+      created_at: new Date().toISOString(),
+      shop: demoStore.shops.find((s) => s.id === params.shopId),
+      images: params.imageUrls.map((url, i) => ({
+        id: demoId('img'),
+        product_id: id,
+        image_url: url,
+        position: i,
+      })),
+      videos: [],
+    });
     return { error: null };
   }
   const { data, error } = await supabase
@@ -575,6 +688,9 @@ export async function updateProduct(
 ): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(200);
+    if (!demoUpdateProduct(productId, params)) {
+      return { error: 'Produit introuvable' };
+    }
     return { error: null };
   }
   const { error } = await supabase
@@ -584,11 +700,28 @@ export async function updateProduct(
   return { error: error?.message ?? null };
 }
 
-export async function deleteProduct(productId: string): Promise<void> {
-  if (useDemo) return;
+// Renvoie une erreur explicite : la suppression pouvait échouer silencieusement
+// (RLS, contrainte), l'écran affichait alors un succès trompeur.
+export async function deleteProduct(
+  productId: string,
+): Promise<{ error: string | null }> {
+  if (useDemo) {
+    await delay(200);
+    if (!demoDeleteProduct(productId)) return { error: 'Produit introuvable' };
+    return { error: null };
+  }
   await supabase.from('product_videos').delete().eq('product_id', productId);
   await supabase.from('product_images').delete().eq('product_id', productId);
-  await supabase.from('products').delete().eq('id', productId);
+  const { data, error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', productId)
+    .select('id');
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Suppression refusée : vous n'êtes pas propriétaire de ce produit" };
+  }
+  return { error: null };
 }
 
 export async function createShop(params: {
@@ -603,7 +736,22 @@ export async function createShop(params: {
 }): Promise<{ shopId: string | null; error: string | null }> {
   if (useDemo) {
     await delay(300);
-    return { shopId: `shop-demo-${Date.now()}`, error: null };
+    const id = demoId('shop');
+    demoStore.shops.unshift({
+      id,
+      owner_id: params.ownerId,
+      name: params.name,
+      description: params.description,
+      logo_url: params.logoUrl ?? null,
+      banner_url: null,
+      category_id: params.categoryId,
+      city: params.city,
+      orange_money_number: params.orangeMoneyNumber ?? null,
+      moov_money_number: params.moovMoneyNumber ?? null,
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    return { shopId: id, error: null };
   }
   const { data, error } = await supabase
     .from('shops')
@@ -633,6 +781,20 @@ export async function createPromotion(params: {
 }): Promise<{ error: string | null }> {
   if (useDemo) {
     await delay(300);
+    demoStore.promotions.unshift({
+      id: demoId('promo'),
+      shop_id: params.shopId,
+      product_id: params.productId ?? null,
+      promo_text: params.promoText,
+      start_date: new Date().toISOString(),
+      end_date: params.endDate,
+      visibility: params.visibility ?? 'home',
+      status: 'active',
+      shop: demoStore.shops.find((s) => s.id === params.shopId),
+      product: params.productId
+        ? demoStore.products.find((p) => p.id === params.productId)
+        : undefined,
+    });
     return { error: null };
   }
   const { error } = await supabase.from('promotions').insert({
@@ -647,11 +809,37 @@ export async function createPromotion(params: {
   return { error: error?.message ?? null };
 }
 
+// ---------- Commande unitaire ----------
+// Nécessaire pour l'écran de paiement : la commande vient d'être créée et ne
+// peut pas être retrouvée dans une liste figée.
+export async function getOrder(
+  orderId: string,
+): Promise<(Order & { items: OrderItem[]; payment?: Payment; shop?: Shop }) | null> {
+  if (useDemo) {
+    await delay(150);
+    const order = demoStore.orders.find((o) => o.id === orderId);
+    if (!order) return null;
+    return {
+      ...order,
+      shop: demoStore.shops.find(
+        (s) => s.id === order.items[0]?.product?.shop_id,
+      ),
+    };
+  }
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, items:order_items(*, product:products(*)), payment:payments(*)')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (error) console.error('getOrder:', error.message);
+  return (data as any) ?? null;
+}
+
 // ---------- Admin ----------
 export async function getPendingShops(): Promise<Shop[]> {
   if (useDemo) {
     await delay(200);
-    return DEMO_SHOPS.slice(0, 2);
+    return [...demoStore.shops];
   }
   const { data, error } = await supabase
     .from('shops')
@@ -659,6 +847,51 @@ export async function getPendingShops(): Promise<Shop[]> {
     .order('created_at', { ascending: false });
   if (error) console.error('getPendingShops:', error.message);
   return (data as Shop[]) ?? [];
+}
+
+// Modération des boutiques (admin) : 'active' = approuvée, 'paused' = refusée /
+// suspendue. Les écrans affichaient un succès sans jamais écrire côté données.
+export async function setShopStatus(
+  shopId: string,
+  status: ShopStatus,
+): Promise<{ error: string | null }> {
+  if (useDemo) {
+    await delay(200);
+    if (!demoUpdateShop(shopId, { status })) {
+      return { error: 'Boutique introuvable' };
+    }
+    return { error: null };
+  }
+  const { data, error } = await supabase
+    .from('shops')
+    .update({ status })
+    .eq('id', shopId)
+    .select('id');
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: 'Action refusée : droits administrateur requis' };
+  }
+  return { error: null };
+}
+
+export async function deleteShop(
+  shopId: string,
+): Promise<{ error: string | null }> {
+  if (useDemo) {
+    await delay(200);
+    if (!demoDeleteShop(shopId)) return { error: 'Boutique introuvable' };
+    return { error: null };
+  }
+  const { data, error } = await supabase
+    .from('shops')
+    .delete()
+    .eq('id', shopId)
+    .select('id');
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: 'Action refusée : droits administrateur requis' };
+  }
+  return { error: null };
 }
 
 export async function getReports(): Promise<any[]> {

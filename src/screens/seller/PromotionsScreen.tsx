@@ -1,15 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  Modal,
-  ScrollView,
-  Alert,
-  RefreshControl,
-} from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, Modal, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -42,6 +32,7 @@ import type {
   DiscountCode,
 } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface PromotionsScreenProps {
   navigation: { goBack: () => void };
 }
@@ -130,14 +121,14 @@ export function PromotionsScreen({ navigation }: PromotionsScreenProps) {
   const handleCreate = async () => {
     if (!shop) return;
     if (!promoText.trim()) {
-      Alert.alert('Erreur', 'Renseignez le texte de la promotion');
+      showAlert('Erreur', 'Renseignez le texte de la promotion');
       return;
     }
     if (promoType === 'special_offer') {
       const orig = parseInt(originalPrice, 10);
       const disc = parseInt(discountedPrice, 10);
       if (isNaN(orig) || isNaN(disc) || disc >= orig) {
-        Alert.alert(
+        showAlert(
           'Erreur',
           'Renseignez un prix promo inférieur au prix original',
         );
@@ -145,7 +136,7 @@ export function PromotionsScreen({ navigation }: PromotionsScreenProps) {
       }
     }
     if (promoType === 'discount_code' && !selectedDiscountCode) {
-      Alert.alert(
+      showAlert(
         'Erreur',
         'Sélectionnez un code promo à associer (créez-en un d\'abord si nécessaire)',
       );
@@ -175,10 +166,10 @@ export function PromotionsScreen({ navigation }: PromotionsScreenProps) {
     });
     setSaving(false);
     if (error) {
-      Alert.alert('Erreur', friendlyMessage(error));
+      showAlert('Erreur', friendlyMessage(error));
       return;
     }
-    Alert.alert(
+    showAlert(
       'Succès ✓',
       'Promotion créée et visible sur l\'accueil',
     );
@@ -197,7 +188,7 @@ export function PromotionsScreen({ navigation }: PromotionsScreenProps) {
   };
 
   const handleDelete = (promo: Promotion) => {
-    Alert.alert(
+    showAlert(
       'Supprimer la promotion',
       'Cette action est irréversible.',
       [

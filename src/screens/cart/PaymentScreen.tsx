@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert, Linking } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -8,20 +8,24 @@ import { Card } from '@/components/ui/Card';
 import { MobileMoneyInfo } from '@/components/payment/MobileMoneyInfo';
 import { PaymentProofUpload } from '@/components/payment/PaymentProofUpload';
 import { OPERATOR_LIST, PAYMENT_OPERATORS, type PaymentOperatorId } from '@/constants/payment';
-import { getBuyerOrders, getShop, uploadPaymentProof } from '@/lib/dataService';
+import { getOrder, getShop, uploadPaymentProof } from '@/lib/dataService';
 import { formatFCFA } from '@/lib/format';
 import { pickAndCompressImage, uploadImage, type StorageBucket } from '@/lib/storage';
 import { notifyProofUploaded } from '@/lib/notifications';
 import { friendlyMessage } from '@/lib/errorMessages';
 import type { Shop, Order } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
+
 interface PaymentScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
-  route: { params: { orderId: string } };
+  // `remainingOrderIds` enchaîne les paiements quand le panier couvre
+  // plusieurs boutiques (une commande, donc un paiement, par boutique).
+  route: { params: { orderId: string; remainingOrderIds?: string[] } };
 }
 
 export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
-  const { orderId } = route.params;
+  const { orderId, remainingOrderIds = [] } = route.params;
   const [order, setOrder] = useState<(Order & { shop?: Shop }) | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [operator, setOperator] = useState<PaymentOperatorId | null>(null);
@@ -30,18 +34,18 @@ export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
 
   useEffect(() => {
     (async () => {
-      const orders = await getBuyerOrders('demo-buyer');
-      const found = orders.find((o) => o.id === orderId);
-      if (found) {
-        const orderWithShop = found as Order & { shop?: Shop };
-        setOrder(orderWithShop);
-        const shopId = found.items?.[0]?.product?.shop_id;
-        if (shopId) {
-          const s = await getShop(shopId);
-          setShop(s);
-          if (s?.orange_money_number) setOperator('orange_money');
-          else if (s?.moov_money_number) setOperator('moov_money');
-        }
+      const found = await getOrder(orderId);
+      if (!found) {
+        showAlert('Commande introuvable', "Cette commande n'est plus disponible.");
+        return;
+      }
+      setOrder(found as Order & { shop?: Shop });
+      const shopId = found.items?.[0]?.product?.shop_id ?? found.shop?.id;
+      if (shopId) {
+        const s = await getShop(shopId);
+        setShop(s);
+        if (s?.orange_money_number) setOperator('orange_money');
+        else if (s?.moov_money_number) setOperator('moov_money');
       }
     })();
   }, [orderId]);
@@ -53,16 +57,16 @@ export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
 
   const handleSubmit = async () => {
     if (!operator || !order || !shop) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un opérateur');
+      showAlert('Erreur', 'Veuillez sélectionner un opérateur');
       return;
     }
     const mmNumber = operator === 'orange_money' ? shop.orange_money_number : shop.moov_money_number;
     if (!mmNumber) {
-      Alert.alert('Erreur', 'Le vendeur n\'a pas de numéro pour cet opérateur');
+      showAlert('Erreur', 'Le vendeur n\'a pas de numéro pour cet opérateur');
       return;
     }
     if (!proofUri) {
-      Alert.alert('Erreur', 'Veuillez téléverser la capture d\'écran du paiement');
+      showAlert('Erreur', 'Veuillez téléverser la capture d\'écran du paiement');
       return;
     }
     setSubmitting(true);
@@ -73,11 +77,16 @@ export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
     const { error } = await uploadPaymentProof(order.id, order.total_amount, operator, proofUrl);
     setSubmitting(false);
     if (error) {
-      Alert.alert('Paiement impossible', friendlyMessage(error));
+      showAlert('Paiement impossible', friendlyMessage(error));
       return;
     }
     // Déclencher notification au vendeur
     await notifyProofUploaded(order.seller_id, order.id);
+    if (remainingOrderIds.length > 0) {
+      const [next, ...rest] = remainingOrderIds;
+      navigation.navigate('Payment', { orderId: next, remainingOrderIds: rest });
+      return;
+    }
     navigation.navigate('OrderConfirmation', { orderId: order.id });
   };
 
@@ -101,7 +110,12 @@ export function PaymentScreen({ navigation, route }: PaymentScreenProps) {
         <Card style={styles.amountCard}>
           <Text style={styles.amountLabel}>Montant à payer</Text>
           <Text style={styles.amountValue}>{formatFCFA(order?.total_amount ?? 0)}</Text>
-          <Text style={styles.amountHint}>Commande #{orderId.slice(-6).toUpperCase()}</Text>
+          <Text style={styles.amountHint}>
+            Commande #{orderId.slice(-6).toUpperCase()}
+            {remainingOrderIds.length > 0
+              ? ` · ${remainingOrderIds.length} autre${remainingOrderIds.length > 1 ? 's' : ''} paiement${remainingOrderIds.length > 1 ? 's' : ''} à suivre`
+              : ''}
+          </Text>
         </Card>
 
         {/* Étape 1 : choix opérateur */}

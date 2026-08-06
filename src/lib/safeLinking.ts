@@ -4,6 +4,7 @@
 
 import { Linking, Alert, Platform } from 'react-native';
 
+import { showAlert } from '@/lib/dialog';
 export type AllowedProtocol =
   | 'http:'
   | 'https:'
@@ -60,7 +61,7 @@ export async function openExternalLink(
   const { url, safe } = parseSafe(raw);
   if (!safe) {
     if (options.showErrorOnBlocked) {
-      Alert.alert('Lien bloqué', "Ce type de lien n'est pas autorisé.");
+      showAlert('Lien bloqué', "Ce type de lien n'est pas autorisé.");
     }
     return false;
   }
@@ -77,7 +78,7 @@ export async function openExternalLink(
     );
     if (!ok) {
       if (options.showErrorOnBlocked) {
-        Alert.alert(
+        showAlert(
           'Site non autorisé',
           'Pour votre sécurité, seules les plateformes de confiance peuvent être ouvertes depuis le produit.',
         );
@@ -91,7 +92,7 @@ export async function openExternalLink(
     const canOpen = await Linking.canOpenURL(url.toString());
     if (!canOpen && Platform.OS !== 'web') {
       if (options.showErrorOnBlocked)
-        Alert.alert('Application introuvable', "Aucune application ne peut ouvrir ce lien.");
+        showAlert('Application introuvable', "Aucune application ne peut ouvrir ce lien.");
       return false;
     }
     await Linking.openURL(url.toString());

@@ -5,6 +5,7 @@ import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { getProduct, findOrCreateConversation } from '@/lib/dataService';
+import { showAlert } from '@/lib/dialog';
 import { getCategoryName } from '@/constants/categories';
 import { MediaCarousel } from '@/components/product/MediaCarousel';
 import { Badge } from '@/components/ui/Badge';
@@ -58,9 +59,18 @@ export function ProductDetailScreen({ navigation, route }: ProductDetailScreenPr
   };
 
   const handleContact = async () => {
-    if (!shop || !profile) return;
-    const convId = await findOrCreateConversation(profile.id, shop.owner_id, shop.id);
-    navigation.navigate('Chat', { conversationId: convId, shopId: shop.id, productId: product.id });
+    if (!shop) return;
+    if (!profile) {
+      showAlert('Connexion requise', 'Connectez-vous pour contacter le vendeur.');
+      navigation.navigate('Login');
+      return;
+    }
+    const conversationId = await findOrCreateConversation(profile.id, shop.owner_id, shop.id);
+    if (!conversationId) {
+      showAlert('Messagerie indisponible', "La conversation n'a pas pu être ouverte. Réessayez.");
+      return;
+    }
+    navigation.navigate('Chat', { conversationId, shopId: shop.id, productId: product.id });
   };
 
   return (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { formatRelativeDate } from '@/lib/format';
 
+import { showAlert } from '@/lib/dialog';
 interface ReportsScreenProps {
   navigation: { goBack: () => void };
 }
@@ -27,11 +28,11 @@ export function ReportsScreen({ navigation }: ReportsScreenProps) {
   useEffect(() => { load(); }, [load]);
 
   const handleAction = (report: any, action: 'resolve' | 'dismiss') => {
-    Alert.alert(action === 'resolve' ? 'Résoudre' : 'Ignorer', action === 'resolve' ? 'Marquer ce signalement comme résolu ?' : 'Ignorer ce signalement ?', [
+    showAlert(action === 'resolve' ? 'Résoudre' : 'Ignorer', action === 'resolve' ? 'Marquer ce signalement comme résolu ?' : 'Ignorer ce signalement ?', [
       { text: 'Annuler' },
       { text: 'Confirmer', onPress: () => {
         setReports((prev) => prev.filter((r) => r.id !== report.id));
-        Alert.alert('Terminé', action === 'resolve' ? 'Signalement résolu' : 'Signalement ignoré');
+        showAlert('Terminé', action === 'resolve' ? 'Signalement résolu' : 'Signalement ignoré');
       } },
     ]);
   };

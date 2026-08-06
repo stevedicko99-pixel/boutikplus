@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -13,6 +13,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { CITY_LIST } from '@/constants/cities';
 import type { DeliveryAddress } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface AddressesScreenProps {
   navigation: { goBack: () => void };
 }
@@ -35,7 +36,7 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
 
   const handleSave = async () => {
     if (!form.district || !form.phone) {
-      Alert.alert('Erreur', 'Quartier et téléphone obligatoires');
+      showAlert('Erreur', 'Quartier et téléphone obligatoires');
       return;
     }
     await saveAddress({
@@ -60,7 +61,7 @@ export function AddressesScreen({ navigation }: AddressesScreenProps) {
   };
 
   const handleDelete = (addr: DeliveryAddress) => {
-    Alert.alert('Supprimer', 'Supprimer cette adresse ?', [
+    showAlert('Supprimer', 'Supprimer cette adresse ?', [
       { text: 'Annuler' },
       { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteAddress(addr.id); await load(); } },
     ]);

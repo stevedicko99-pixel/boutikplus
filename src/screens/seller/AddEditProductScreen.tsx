@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ import { ProductVideoCard } from '@/components/product/ProductVideoCard';
 import { friendlyMessage } from '@/lib/errorMessages';
 import type { Shop, ProductVideo } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface AddEditProductScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
   route: { params?: { productId?: string; editedImageUri?: string; editIndex?: number } };
@@ -55,7 +56,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   }, [profile, productId]);
 
   const handleDeleteVideo = async (video: ProductVideo) => {
-    Alert.alert(
+    showAlert(
       'Supprimer la vidéo',
       'Voulez-vous vraiment retirer cette vidéo ?',
       [
@@ -65,7 +66,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
           style: 'destructive',
           onPress: async () => {
             const { error } = await deleteProductVideo(video.id);
-            if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
+            if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
             setVideos((prev) => prev.filter((v) => v.id !== video.id));
           },
         },
@@ -94,7 +95,7 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   }, [route.params?.editedImageUri, route.params?.editIndex, productId, navigation]);
 
   const handleAddImage = () => {
-    if (images.length >= 5) { Alert.alert('Maximum', '5 photos maximum par produit'); return; }
+    if (images.length >= 5) { showAlert('Maximum', '5 photos maximum par produit'); return; }
     navigation.navigate('PhotoStudio', { returnTo: 'AddEditProduct', aspect: '1:1' });
   };
 
@@ -108,8 +109,8 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   };
 
   const handleSave = async () => {
-    if (!shop) { Alert.alert('Erreur', 'Créez d\'abord une boutique'); return; }
-    if (!name || !price) { Alert.alert('Erreur', 'Nom et prix obligatoires'); return; }
+    if (!shop) { showAlert('Erreur', 'Créez d\'abord une boutique'); return; }
+    if (!name || !price) { showAlert('Erreur', 'Nom et prix obligatoires'); return; }
     setLoading(true);
     const priceNum = parseInt(price.replace(/\D/g, ''), 10) || 0;
     const stockNum = parseInt(stock, 10) || 0;
@@ -127,15 +128,15 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
         name, description, price: priceNum, category_id: categoryId, stock: stockNum,
         status: stockNum > 0 ? 'available' : 'out_of_stock',
       });
-      if (error) { Alert.alert('Erreur', friendlyMessage(error)); setLoading(false); return; }
+      if (error) { showAlert('Erreur', friendlyMessage(error)); setLoading(false); return; }
     } else {
       const { error } = await createProduct({
         shopId: shop.id, name, description, price: priceNum, categoryId, stock: stockNum, imageUrls,
       });
-      if (error) { Alert.alert('Erreur', friendlyMessage(error)); setLoading(false); return; }
+      if (error) { showAlert('Erreur', friendlyMessage(error)); setLoading(false); return; }
     }
     setLoading(false);
-    Alert.alert('Succès ✓', isEdit ? 'Produit modifié' : 'Produit ajouté', [{ text: 'OK', onPress: navigation.goBack }]);
+    showAlert('Succès ✓', isEdit ? 'Produit modifié' : 'Produit ajouté', [{ text: 'OK', onPress: navigation.goBack }]);
   };
 
   return (

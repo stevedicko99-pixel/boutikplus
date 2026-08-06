@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
 import { getConversations } from '@/lib/dataService';
+import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { formatRelativeDate } from '@/lib/format';
@@ -22,7 +23,12 @@ export function ConversationListScreen({ navigation }: ConversationListScreenPro
 
   useEffect(() => {
     (async () => {
-      const convs = await getConversations(profile?.id ?? 'demo-buyer');
+      if (!profile) {
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+      const convs = await getConversations(profile.id);
       setConversations(convs);
       setLoading(false);
     })();
@@ -35,6 +41,13 @@ export function ConversationListScreen({ navigation }: ConversationListScreenPro
       </View>
       {loading ? (
         <LoadingSpinner />
+      ) : !profile ? (
+        <EmptyState
+          icon="lock"
+          title="Connexion requise"
+          message="Connectez-vous pour échanger avec les vendeurs"
+          action={<Button label="Se connecter" onPress={() => navigation.navigate('Login')} style={{ marginTop: spacing.lg }} />}
+        />
       ) : conversations.length === 0 ? (
         <EmptyState icon="message-square" title="Aucune conversation" message="Contactez un vendeur depuis une fiche produit pour discuter" />
       ) : (

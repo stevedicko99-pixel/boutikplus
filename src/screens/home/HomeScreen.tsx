@@ -1,13 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  RefreshControl,
-  FlatList,
-} from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, RefreshControl, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -91,13 +83,32 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             <View style={styles.header}>
               <View>
                 <Text style={styles.greeting}>Bonjour 👋</Text>
-                <Text style={styles.userName}>{profile?.full_name ?? 'Cher acheteur'}</Text>
+                <Text style={styles.userName}>{profile?.full_name ?? 'Bienvenue sur Boutikplus'}</Text>
               </View>
               <Pressable style={styles.bell} onPress={() => navigation.navigate('NotificationCenter')}>
                 <Feather name="bell" size={22} color={colors.text} />
                 {totalUnread > 0 ? <View style={styles.badgeDot}><Text style={styles.badgeDotText}>{totalUnread > 9 ? '9+' : totalUnread}</Text></View> : null}
               </Pressable>
             </View>
+
+            {/* Invitation à rejoindre la plateforme (visiteurs non connectés) */}
+            {!profile ? (
+              <View style={styles.guestCard}>
+                <Text style={styles.guestTitle}>Achetez et vendez au Faso</Text>
+                <Text style={styles.guestText}>
+                  Parcourez librement la marketplace. Créez un compte pour commander,
+                  discuter avec les vendeurs ou ouvrir votre boutique.
+                </Text>
+                <View style={styles.guestActions}>
+                  <Pressable style={styles.guestPrimary} onPress={() => navigation.navigate('Register')}>
+                    <Text style={styles.guestPrimaryText}>Créer mon compte</Text>
+                  </Pressable>
+                  <Pressable style={styles.guestSecondary} onPress={() => navigation.navigate('Login')}>
+                    <Text style={styles.guestSecondaryText}>Se connecter</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
 
             {/* Search bar */}
             <Pressable
@@ -204,6 +215,51 @@ const styles = StyleSheet.create({
   bell: { position: 'relative', width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderLight },
   badgeDot: { position: 'absolute', top: 6, right: 8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.danger, borderWidth: 2, borderColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   badgeDotText: { fontFamily: typography.fontFamily, fontSize: 10, fontWeight: '700', color: colors.textInverse },
+  guestCard: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    backgroundColor: colors.secondary,
+  },
+  guestTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.subtitle,
+    fontWeight: typography.weights.extrabold,
+    color: colors.textInverse,
+  },
+  guestText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: spacing.xs,
+  },
+  guestActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  guestPrimary: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+  },
+  guestPrimaryText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.semibold,
+    color: colors.textInverse,
+  },
+  guestSecondary: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  guestSecondaryText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.small,
+    fontWeight: typography.weights.semibold,
+    color: colors.textInverse,
+  },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.md, marginBottom: spacing.lg, borderWidth: 1, borderColor: colors.borderLight },
   searchPlaceholder: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, color: colors.textMuted },
   catScroll: { gap: spacing.sm, marginBottom: spacing.lg, paddingRight: spacing.lg },

@@ -1,13 +1,5 @@
 import { useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Alert,
-  TextInput,
-} from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -15,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/context/AuthContext';
 import { notifyReferralBonus } from '@/lib/notifications';
 
+import { showAlert } from '@/lib/dialog';
 interface ReferralProgramScreenProps {
   navigation: { goBack: () => void };
 }
@@ -25,11 +18,11 @@ export function ReferralProgramScreen({ navigation }: ReferralProgramScreenProps
 
   const handleInvite = async () => {
     if (!inviteCode.trim()) {
-      Alert.alert('Code requis', 'Entrez le numéro de téléphone du vendeur à inviter.');
+      showAlert('Code requis', 'Entrez le numéro de téléphone du vendeur à inviter.');
       return;
     }
     // Simulation d'envoi d'invitation
-    Alert.alert(
+    showAlert(
       'Invitation envoyée 🎉',
       `Vous avez invité ${inviteCode}. Dès qu'il crée une boutique active, vous recevrez une mise en avant gratuite !`,
     );
@@ -38,7 +31,7 @@ export function ReferralProgramScreen({ navigation }: ReferralProgramScreenProps
 
   const handleCopyReferralCode = () => {
     const code = profile?.id ?? 'votre-code';
-    Alert.alert('Code copié !', `Votre code de parrainage: ${code}\n\nPartagez-le avec d'autres vendeurs !`);
+    showAlert('Code copié !', `Votre code de parrainage: ${code}\n\nPartagez-le avec d'autres vendeurs !`);
   };
 
   return (

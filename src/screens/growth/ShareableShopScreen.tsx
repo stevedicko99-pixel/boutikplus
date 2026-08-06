@@ -1,13 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  Alert,
-  Platform,
-} from 'react-native';
+import { StyleSheet, View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -25,6 +17,7 @@ import { QRCodeView } from '@/components/promotion/QRCodeView';
 import { openExternalLink } from '@/lib/safeLinking';
 import type { ShareLink } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface ShareableShopScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
   route: {
@@ -56,7 +49,7 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
         shopName,
       });
       if (error) {
-        Alert.alert('Erreur', friendlyMessage(error));
+        showAlert('Erreur', friendlyMessage(error));
         setLoading(false);
         return;
       }
@@ -117,7 +110,7 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
       default: 'https://www.instagram.com/',
     });
     await openShareUrl(url, 'Instagram', activeLink, 'instagram', 'social');
-    Alert.alert(
+    showAlert(
       'Lien copié',
       "Collez le lien dans votre bio ou story Instagram.",
     );
@@ -142,7 +135,7 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
       default: 'https://www.tiktok.com/',
     });
     await openShareUrl(url as string, 'TikTok', activeLink, 'tiktok', 'social');
-    Alert.alert(
+    showAlert(
       'Lien copié',
       "Collez le lien dans votre bio TikTok ou la description d'une vidéo.",
     );
@@ -158,7 +151,7 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
       default: 'https://www.snapchat.com/',
     });
     await openShareUrl(url as string, 'Snapchat', activeLink, 'snapchat', 'social');
-    Alert.alert(
+    showAlert(
       'Lien copié',
       'Collez le lien dans votre story ou bio Snapchat.',
     );
@@ -184,14 +177,14 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
         });
       } else {
         await Clipboard.setStringAsync(shareUrl);
-        Alert.alert(
+        showAlert(
           `${platformName} indisponible`,
           'Le lien a été copié. Partagez-le manuellement.',
         );
       }
     } catch {
       await Clipboard.setStringAsync(shareUrl);
-      Alert.alert(
+      showAlert(
         `${platformName} indisponible`,
         'Le lien a été copié. Partagez-le manuellement.',
       );

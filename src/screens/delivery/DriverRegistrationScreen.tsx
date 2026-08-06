@@ -1,14 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -29,6 +20,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import type { VehicleType } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface DriverRegistrationScreenProps {
   navigation: {
     goBack: () => void;
@@ -90,11 +82,11 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
 
   const handleSubmit = async () => {
     if (!profile?.id) {
-      Alert.alert('Erreur', 'Vous devez être connecté');
+      showAlert('Erreur', 'Vous devez être connecté');
       return;
     }
     if (!validate()) {
-      Alert.alert('Vérifiez le formulaire', 'Certains champs sont invalides.');
+      showAlert('Vérifiez le formulaire', 'Certains champs sont invalides.');
       return;
     }
     setSubmitting(true);
@@ -127,11 +119,11 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
     }
     setSubmitting(false);
     if (error) {
-      Alert.alert('Erreur', friendlyMessage(error));
+      showAlert('Erreur', friendlyMessage(error));
       return;
     }
     await refreshProfile();
-    Alert.alert(
+    showAlert(
       existingDriverId ? 'Profil mis à jour ✓' : 'Inscription réussie 🎉',
       existingDriverId
         ? 'Votre profil livreur a été mis à jour.'

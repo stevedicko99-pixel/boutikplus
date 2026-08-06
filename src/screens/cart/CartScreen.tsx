@@ -4,6 +4,8 @@ import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
+import { confirmAction } from '@/lib/dialog';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatFCFA } from '@/lib/format';
@@ -15,6 +17,16 @@ interface CartScreenProps {
 
 export function CartScreen({ navigation }: CartScreenProps) {
   const { sellerGroups, total, count, updateQuantity, removeItem, clear } = useCart();
+  const { profile } = useAuth();
+
+  const handleClear = async () => {
+    if (await confirmAction('Vider le panier', 'Retirer tous les articles du panier ?', 'Vider')) clear();
+  };
+
+  // La commande exige un compte : on redirige au lieu d'échouer au checkout.
+  const handleCheckout = () => {
+    navigation.navigate(profile ? 'Checkout' : 'Login');
+  };
 
   if (count === 0) {
     return (
@@ -33,7 +45,7 @@ export function CartScreen({ navigation }: CartScreenProps) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Mon panier</Text>
-        <Pressable onPress={clear} hitSlop={10}>
+        <Pressable onPress={handleClear} hitSlop={10}>
           <Text style={styles.clearBtn}>Vider</Text>
         </Pressable>
       </View>
@@ -56,7 +68,11 @@ export function CartScreen({ navigation }: CartScreenProps) {
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalAmount}>{formatFCFA(total)}</Text>
         </View>
-        <Button label="Commander" onPress={() => navigation.navigate('Checkout')} style={{ flex: 1, marginLeft: spacing.lg }} />
+        <Button
+          label={profile ? 'Commander' : 'Se connecter pour commander'}
+          onPress={handleCheckout}
+          style={{ flex: 1, marginLeft: spacing.lg }}
+        />
       </View>
     </SafeAreaView>
   );

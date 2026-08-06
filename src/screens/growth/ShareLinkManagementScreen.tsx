@@ -1,15 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  Modal,
-  ScrollView,
-  Alert,
-  RefreshControl,
-} from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, Modal, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -32,6 +22,7 @@ import { Button } from '@/components/ui/Button';
 import { openExternalLink } from '@/lib/safeLinking';
 import type { Shop, ShareLink, ShareLinkMedium, ShareLinkSource } from '@/types/models';
 
+import { showAlert } from '@/lib/dialog';
 interface ShareLinkManagementScreenProps {
   navigation: {
     navigate: (screen: string, params?: any) => void;
@@ -102,7 +93,7 @@ export function ShareLinkManagementScreen({
 
   const handleCopy = async (link: ShareLink) => {
     await Clipboard.setStringAsync(link.target_url);
-    Alert.alert('Copié ✓', 'Le lien a été copié dans le presse-papier.');
+    showAlert('Copié ✓', 'Le lien a été copié dans le presse-papier.');
   };
 
   const handleShare = async (link: ShareLink) => {
@@ -123,7 +114,7 @@ export function ShareLinkManagementScreen({
     } else {
       // Fallback : copie le lien
       await Clipboard.setStringAsync(link.target_url);
-      Alert.alert(
+      showAlert(
         'WhatsApp indisponible',
         'Le lien a été copié. Partagez-le manuellement.',
       );
@@ -144,7 +135,7 @@ export function ShareLinkManagementScreen({
     });
     setSaving(false);
     if (error) {
-      Alert.alert('Erreur', friendlyMessage(error));
+      showAlert('Erreur', friendlyMessage(error));
       return;
     }
     setShowForm(false);
@@ -153,7 +144,7 @@ export function ShareLinkManagementScreen({
     setMedium('social');
     await loadLinks();
     if (link) {
-      Alert.alert(
+      showAlert(
         'Lien créé ✓',
         'Votre lien de partage est prêt. Voulez-vous le partager maintenant ?',
         [
@@ -173,7 +164,7 @@ export function ShareLinkManagementScreen({
   };
 
   const handleDelete = (link: ShareLink) => {
-    Alert.alert(
+    showAlert(
       'Supprimer le lien',
       `Voulez-vous vraiment supprimer « ${link.label ?? link.slug} » ?`,
       [

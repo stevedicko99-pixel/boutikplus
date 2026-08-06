@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 
+import { showAlert } from '@/lib/dialog';
 interface CreateShopScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
 }
@@ -34,8 +35,8 @@ export function CreateShopScreen({ navigation }: CreateShopScreenProps) {
   };
 
   const handleCreate = async () => {
-    if (!name) { Alert.alert('Erreur', 'Donnez un nom à votre boutique'); return; }
-    if (!orangeNumber && !moovNumber) { Alert.alert('Erreur', 'Renseignez au moins un numéro Mobile Money'); return; }
+    if (!name) { showAlert('Erreur', 'Donnez un nom à votre boutique'); return; }
+    if (!orangeNumber && !moovNumber) { showAlert('Erreur', 'Renseignez au moins un numéro Mobile Money'); return; }
     setLoading(true);
     let logoUrl = logoUri;
     if (logoUri) {
@@ -53,8 +54,8 @@ export function CreateShopScreen({ navigation }: CreateShopScreenProps) {
       logoUrl: logoUrl && logoUri ? null : null,
     });
     setLoading(false);
-    if (error) { Alert.alert('Erreur', friendlyMessage(error)); return; }
-    Alert.alert('Succès 🎉', 'Votre boutique a été créée !', [{ text: 'OK', onPress: () => navigation.navigate('SellerDashboard') }]);
+    if (error) { showAlert('Erreur', friendlyMessage(error)); return; }
+    showAlert('Succès 🎉', 'Votre boutique a été créée !', [{ text: 'OK', onPress: () => navigation.navigate('SellerDashboard') }]);
   };
 
   return (

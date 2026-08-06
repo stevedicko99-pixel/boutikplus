@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
 import { getShopByOwner, getProductsByShop, deleteProduct, updateProduct } from '@/lib/dataService';
+import { friendlyMessage } from '@/lib/errorMessages';
+import { showAlert, confirmAction } from '@/lib/dialog';
 import { getCategoryName } from '@/constants/categories';
 import { formatFCFA } from '@/lib/format';
 import { Badge } from '@/components/ui/Badge';
@@ -22,6 +24,7 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<ProductWithImages[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const s = await getShopByOwner(profile?.id ?? 'demo-seller');
@@ -35,16 +38,32 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
 
   useEffect(() => { load(); }, [load]);
 
-  const handleDelete = (product: ProductWithImages) => {
-    Alert.alert('Supprimer', `Supprimer "${product.name}" ?`, [
-      { text: 'Annuler' },
-      { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteProduct(product.id); await load(); } },
-    ]);
+  const handleDelete = async (product: ProductWithImages) => {
+    const ok = await confirmAction(
+      'Supprimer le produit',
+      `Supprimer "${product.name}" ? Cette action est définitive.`,
+      'Supprimer',
+    );
+    if (!ok) return;
+    setBusyId(product.id);
+    const { error } = await deleteProduct(product.id);
+    setBusyId(null);
+    if (error) {
+      showAlert('Suppression impossible', friendlyMessage(error));
+      return;
+    }
+    setProducts((prev) => prev.filter((p) => p.id !== product.id));
   };
 
   const toggleStock = async (product: ProductWithImages) => {
     const newStatus: ProductStatus = product.status === 'available' ? 'out_of_stock' : 'available';
-    await updateProduct(product.id, { status: newStatus, stock: newStatus === 'available' ? 1 : 0 });
+    setBusyId(product.id);
+    const { error } = await updateProduct(product.id, { status: newStatus, stock: newStatus === 'available' ? Math.max(1, product.stock) : 0 });
+    setBusyId(null);
+    if (error) {
+      showAlert('Mise à jour impossible', friendlyMessage(error));
+      return;
+    }
     await load();
   };
 
@@ -88,13 +107,13 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
                 </View>
               </View>
               <View style={styles.actions}>
-                <Pressable style={styles.actionBtn} onPress={() => toggleStock(item)}>
+                <Pressable style={styles.actionBtn} onPress={() => toggleStock(item)} disabled={busyId === item.id}>
                   <Feather name={item.status === 'available' ? 'eye-off' : 'eye'} size={16} color={colors.warning} />
                 </Pressable>
                 <Pressable style={styles.actionBtn} onPress={() => navigation.navigate('AddEditProduct', { productId: item.id })}>
                   <Feather name="edit-2" size={16} color={colors.secondary} />
                 </Pressable>
-                <Pressable style={styles.actionBtn} onPress={() => handleDelete(item)}>
+                <Pressable style={styles.actionBtn} onPress={() => handleDelete(item)} disabled={busyId === item.id} accessibilityLabel={`Supprimer ${item.name}`}>
                   <Feather name="trash-2" size={16} color={colors.danger} />
                 </Pressable>
               </View>

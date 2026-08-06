@@ -4,7 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getShop, getProductsByShop, getShopReviews } from '@/lib/dataService';
+import { getShop, getProductsByShop, getShopReviews, findOrCreateConversation } from '@/lib/dataService';
+import { useAuth } from '@/context/AuthContext';
+import { showAlert } from '@/lib/dialog';
 import { getCategoryName } from '@/constants/categories';
 import { ProductCard } from '@/components/product/ProductCard';
 import { Rating } from '@/components/ui/Rating';
@@ -22,12 +24,30 @@ interface ShopDetailScreenProps {
 
 export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
   const { shopId } = route.params;
+  const { profile } = useAuth();
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<ProductWithImages[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'products' | 'reviews'>('products');
+
+  // Ouvre (ou crée) la conversation réelle entre l'acheteur et le vendeur :
+  // l'ancien identifiant fixe menait toujours à la même discussion de démo.
+  const handleContact = async () => {
+    if (!shop) return;
+    if (!profile) {
+      showAlert('Connexion requise', 'Connectez-vous pour contacter le vendeur.');
+      navigation.navigate('Login');
+      return;
+    }
+    const conversationId = await findOrCreateConversation(profile.id, shop.owner_id, shop.id);
+    if (!conversationId) {
+      showAlert('Messagerie indisponible', "La conversation n'a pas pu être ouverte. Réessayez.");
+      return;
+    }
+    navigation.navigate('Chat', { conversationId, shopId: shop.id });
+  };
 
   useEffect(() => {
     (async () => {
@@ -75,7 +95,7 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
                   <Feather name="share-2" size={20} color={colors.primary} />
                 </Pressable>
               </View>
-              <Pressable hitSlop={10} onPress={() => navigation.navigate('Chat', { conversationId: 'conv-1', shopId: shop.id })}>
+              <Pressable hitSlop={10} onPress={handleContact}>
                 <Feather name="message-circle" size={22} color={colors.text} />
               </Pressable>
             </View>
@@ -120,7 +140,7 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
                 variant="outline"
                 size="sm"
                 icon={<Feather name="message-circle" size={16} color={colors.secondary} />}
-                onPress={() => navigation.navigate('Chat', { conversationId: 'conv-1', shopId: shop.id })}
+                onPress={handleContact}
                 style={{ flex: 1 }}
               />
             </View>
