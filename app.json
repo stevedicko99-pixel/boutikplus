@@ -8,7 +8,7 @@
     "scheme": "boutikplus",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "owner": "chriss1137s-team",
+    "owner": "chrisouedraogos-team",
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
@@ -93,7 +93,7 @@
       "shortName": "Boutikplus",
       "lang": "fr",
       "themeColor": "#FF8A5C",
-        "backgroundColor": "#FFF8F2",
+      "backgroundColor": "#FFF8F2",
       "meta": {
         "og:type": "website",
         "og:title": "Boutikplus — Marketplace des jeunes vendeurs du Faso",
@@ -139,7 +139,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "2f3f0518-75bf-4d1d-bfa0-aa9a3198d4f8"
+        "projectId": "dd937fae-1faa-4dc0-a30f-7e8c9ace2654"
       }
     }
   }
