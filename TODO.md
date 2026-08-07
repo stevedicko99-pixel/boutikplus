@@ -8,5 +8,5 @@
 - [x] 5. Créer l'animation de chargement premium (`BrandLoader`)
 - [x] 6. Audit : TypeScript check + tests Jest
 - [x] 7. Déployer le build web sur Vercel
-- [ ] 8. Build APK avec EAS (token fourni)
-- [ ] 9. Lier l'APK au site Vercel (téléchargement)
+- [x] 8. Build APK avec EAS (token fourni)
+- [x] 9. Lier l'APK au site Vercel (téléchargement)
