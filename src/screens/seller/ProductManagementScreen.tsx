@@ -11,6 +11,7 @@ import { formatFCFA } from '@/lib/format';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageLoader } from '@/components/ui/PageLoader';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { Shop, ProductWithImages, ProductStatus } from '@/types/models';
 
 interface ProductManagementScreenProps {
@@ -23,6 +24,8 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
   const [products, setProducts] = useState<ProductWithImages[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProductWithImages | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!profile?.id) return;
@@ -39,19 +42,20 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
   useEffect(() => { load(); }, [load]);
 
   const handleDelete = (product: ProductWithImages) => {
-    Alert.alert('Supprimer', `Supprimer "${product.name}" ?`, [
-      { text: 'Annuler' },
-      { text: 'Supprimer', style: 'destructive', onPress: async () => {
-        setBusyId(product.id);
-        const { error } = await deleteProduct(product.id);
-        setBusyId(null);
-        if (error) {
-          Alert.alert('Erreur', `Impossible de supprimer: ${error}`);
-        } else {
-          setProducts((prev) => prev.filter((p) => p.id !== product.id));
-        }
-      } },
-    ]);
+    setDeleteTarget(product);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error } = await deleteProduct(deleteTarget.id);
+    setDeleting(false);
+    if (error) {
+      Alert.alert('Erreur', `Impossible de supprimer: ${error}`);
+    } else {
+      setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+    }
+    setDeleteTarget(null);
   };
 
   const toggleStock = async (product: ProductWithImages) => {
@@ -118,10 +122,23 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
                   </>
                 )}
               </View>
-            </View>
+</View>
           )}
         />
       )}
+
+      <ConfirmDialog
+        visible={!!deleteTarget}
+        title="Supprimer le produit"
+        message={deleteTarget ? `Voulez-vous vraiment supprimer "${deleteTarget.name}" ? Cette action est irréversible.` : ''}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        tone="danger"
+        icon="trash-2"
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => { if (!deleting) setDeleteTarget(null); }}
+      />
     </SafeAreaView>
   );
 }

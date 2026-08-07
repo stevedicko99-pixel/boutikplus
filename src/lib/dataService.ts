@@ -37,6 +37,13 @@ const useDemo = !isSupabaseConfigured;
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 
+// Stock de messages en mémoire pour la démo.
+// Au lieu d'être éphémères (perdus à chaque écran), les messages envoyés en mode
+// démo sont conservés ici et fusionnés avec DEMO_MESSAGES dans getMessages().
+// Cela permet au "Contacter le vendeur" d'afficher immédiatement le message
+// d'approche du produit dans le chat.
+const demoMessageStore = new Map<string, Message[]>();
+
 export interface ProductFilters {
   query?: string;
   categoryId?: string;
@@ -393,35 +400,73 @@ export async function createOrder(params: {
   totalAmount: number;
   addressId: string | null;
   note?: string | null;
+  includeDelivery?: boolean;
+  deliveryFee?: number;
 }): Promise<{ orderId: string | null; error: string | null }> {
   if (useDemo) {
     await delay(300);
     const id = `order-demo-${Date.now()}`;
     return { orderId: id, error: null };
   }
-  const { data, error } = await supabase
-    .from('orders')
-    .insert({
-      buyer_id: params.buyerId,
-      seller_id: params.sellerId,
-      total_amount: params.totalAmount,
-      delivery_address_id: params.addressId,
-      note: params.note ?? null,
-      status: 'pending_payment',
-    })
-    .select('id')
-    .single();
-  if (error) return { orderId: null, error: error.message };
-  const orderId = data.id;
-  const orderItems = params.items.map((it) => ({
-    order_id: orderId,
-    product_id: it.product_id,
-    quantity: it.quantity,
-    unit_price: it.unit_price,
-    variant_info: it.variant_info ?? null,
-  }));
-  await supabase.from('order_items').insert(orderItems as any);
-  return { orderId, error: null };
+  const base: any = {
+    buyer_id: params.buyerId,
+    seller_id: params.sellerId,
+    total_amount: params.totalAmount,
+    delivery_address_id: params.addressId,
+    note: params.note ?? null,
+    status: 'pending_payment',
+  };
+  // Colonnes potentiellement absentes en production ancienne → tentative puis fallback.
+  try {
+    const payloadWithDelivery = {
+      ...base,
+      include_delivery: params.includeDelivery ?? null,
+      delivery_fee: params.deliveryFee ?? null,
+    };
+    const { data, error } = await supabase
+      .from('orders')
+      .insert(payloadWithDelivery)
+      .select('id')
+      .single();
+    if (error) {
+      // Colonne inconnue → fallback sans les cols livraison
+      if (error.message.includes('column') && error.message.includes('does not exist')) {
+        return doCreateOrderFallback(base, params.items);
+      }
+      return { orderId: null, error: error.message };
+    }
+    const orderId = data.id;
+    const orderItems = params.items.map((it) => ({
+      order_id: orderId,
+      product_id: it.product_id,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      variant_info: it.variant_info ?? null,
+    }));
+    await supabase.from('order_items').insert(orderItems as any);
+    return { orderId, error: null };
+  } catch (e: any) {
+    return doCreateOrderFallback(base, params.items);
+  }
+}
+
+async function doCreateOrderFallback(base: any, items: typeof createOrder extends (p: infer P) => any ? P extends { items: infer I } ? I : never : never): Promise<{ orderId: string | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.from('orders').insert(base).select('id').single();
+    if (error) return { orderId: null, error: error.message };
+    const orderId = data.id;
+    const orderItems = (items as any[]).map((it: any) => ({
+      order_id: orderId,
+      product_id: it.product_id,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      variant_info: it.variant_info ?? null,
+    }));
+    await supabase.from('order_items').insert(orderItems as any);
+    return { orderId, error: null };
+  } catch (e: any) {
+    return { orderId: null, error: e?.message ?? String(e) };
+  }
 }
 
 export async function uploadPaymentProof(
@@ -520,7 +565,14 @@ export async function getConversations(
 export async function getMessages(conversationId: string): Promise<Message[]> {
   if (useDemo) {
     await delay(150);
-    return DEMO_MESSAGES.filter((m) => m.conversation_id === conversationId);
+    // Fusionne les messages statiques DEMO_MESSAGES avec ceux envoyés en session
+    // pour cette conversation (stockés en mémoire). L'approche "Contacter le
+    // vendeur" est donc visible immédiatement dans le chat.
+    const staticMsgs = DEMO_MESSAGES.filter((m) => m.conversation_id === conversationId);
+    const sessionMsgs = demoMessageStore.get(conversationId) ?? [];
+    return [...staticMsgs, ...sessionMsgs].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
   }
   const { data, error } = await supabase
     .from('messages')
@@ -539,7 +591,7 @@ export async function sendMessage(
 ): Promise<Message | null> {
   if (useDemo) {
     await delay(100);
-    return {
+    const msg: Message = {
       id: `m-demo-${Date.now()}`,
       conversation_id: conversationId,
       sender_id: senderId,
@@ -548,6 +600,11 @@ export async function sendMessage(
       created_at: new Date().toISOString(),
       read: false,
     };
+    // Persister le message en mémoire pour cette conversation (visible sur les
+    // autres écrans de la session).
+    const existing = demoMessageStore.get(conversationId) ?? [];
+    demoMessageStore.set(conversationId, [...existing, msg]);
+    return msg;
   }
   const { data, error } = await supabase
     .from('messages')
@@ -568,7 +625,15 @@ export async function findOrCreateConversation(
   sellerId: string,
   shopId: string,
 ): Promise<string | null> {
-  if (useDemo) return DEMO_CONVERSATIONS[0]?.id ?? 'conv-1';
+if (useDemo) {
+    // En démo, on retourne une conversation propre à chaque boutique
+    // (conv-<shopId>). Ainsi "Contacter le vendeur" ouvre une discussion
+    // dédiée au produit de cette boutique, avec son message d'approche.
+    // On garde conv-1 pour la boutique shop-1 (rétro-compatibilité avec les
+    // messages statiques de démonstration).
+    if (shopId === 'shop-1') return 'conv-1';
+    return `conv-${shopId}`;
+  }
   const { data: existing } = await supabase
     .from('conversations')
     .select('id')
@@ -670,13 +735,25 @@ export async function updateProduct(
 
 export async function deleteProduct(productId: string): Promise<{ error: string | null }> {
   if (useDemo) return { error: null };
-  // Les images/vidéos sont supprimées automatiquement via ON DELETE CASCADE
-  const { error } = await supabase.from('products').delete().eq('id', productId);
-  if (error) {
-    console.error('deleteProduct:', error.message);
-    return { error: error.message };
+  try {
+    // 1. Supprimer d'abord les vidéos associées (pas de CASCADE garanti)
+    await supabase.from('product_videos').delete().eq('product_id', productId);
+    // 2. Supprimer les images (product_images) — la RPC set_product_images gère
+    //    les remplacements, mais pour le delete on nettoie aussi direct
+    await supabase.from('product_images').delete().eq('product_id', productId);
+    // 3. Supprimer les favoris liés à ce produit
+    try { await supabase.from('favorites').delete().eq('product_id', productId); } catch { /* noop */ }
+    // 4. Enfin, supprimer le produit (CASCADE supprimera ce qui reste)
+    const { error } = await supabase.from('products').delete().eq('id', productId);
+    if (error) {
+      console.error('deleteProduct final step error:', error.message);
+      return { error: error.message };
+    }
+    return { error: null };
+  } catch (e: any) {
+    console.error('deleteProduct unexpected error:', e?.message);
+    return { error: e?.message ?? 'Erreur lors de la suppression' };
   }
-  return { error: null };
 }
 
 export async function createShop(params: {
@@ -757,7 +834,7 @@ export async function updateShop(shopId: string, params: {
     await delay(200);
     return { error: null };
   }
-  // Nettoyage : on ne passe pas les champs undefined à .update()
+// Nettoyage : on ne passe pas les champs undefined à .update()
   // Renommage cover_url -> banner_url (la colonne réelle Supabase s'appelle banner_url)
   const payload: Record<string, unknown> = {};
   (Object.keys(params) as Array<keyof typeof params>).forEach((k) => {

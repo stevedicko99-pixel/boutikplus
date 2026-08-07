@@ -1,28 +1,36 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '@/theme';
-import { LoadingSpinner } from './LoadingSpinner';
+import { StyleSheet, View } from 'react-native';
+import { colors } from '@/theme';
+import { BrandLoader } from './BrandLoader';
 
 interface PageLoaderProps {
   size?: 'sm' | 'md' | 'lg';
   label?: boolean | string;
 }
 
+/**
+ * PageLoader — écran de chargement pleine page "premium".
+ * Délègue à <BrandLoader> (orbe corail respirant + points fil + wordmark
+ * shimmer + fil de couture dessiné) pour une expérience de marque cohérente
+ * et haut de gamme sur toutes les pages.
+ */
 function PageLoader({ size = 'md', label = true }: PageLoaderProps) {
-  const spinnerSize = { sm: 24, md: 32, lg: 40 }[size];
-  const text = typeof label === 'string' ? label : 'Chargement de la page';
+  const labelText = typeof label === 'string' ? label : 'Chargement de la page';
   return (
-    <View style={styles.page} accessibilityRole="progressbar" accessibilityLabel={text}>
-      <View style={styles.mark} accessibilityElementsHidden><Text style={styles.markText}>B+</Text></View>
-      <LoadingSpinner size={spinnerSize} label={label ? text : ''} style={styles.spinner} />
+    <View style={styles.page} accessibilityRole="progressbar" accessibilityLabel={labelText}>
+      <BrandLoader size={size} label={label !== false} fullPage={false} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, minHeight: 280, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl },
-  mark: { width: 52, height: 52, borderRadius: radius.lg, backgroundColor: colors.primaryDeep, alignItems: 'center', justifyContent: 'center' },
-  markText: { color: colors.textInverse, fontFamily: typography.fontFamily, fontSize: typography.sizes.title, fontWeight: typography.weights.bold },
-  spinner: { flex: 0, paddingTop: spacing.md, paddingBottom: 0 },
+  page: {
+    flex: 1,
+    minHeight: 280,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
 });
 
 export { PageLoader };
