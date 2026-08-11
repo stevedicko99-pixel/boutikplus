@@ -37,7 +37,6 @@ import type { Database } from '@/types/database';
 
 const useDemo = !isSupabaseConfigured;
 
-const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 
 // Cache en mémoire pour le mode démo (mutations locales)
 let demoDrivers: DriverProfile[] = [...DEMO_DRIVER_PROFILES];
@@ -101,7 +100,6 @@ export async function searchDrivers(
   filters?: DriverFilters,
 ): Promise<DriverProfile[]> {
   if (useDemo) {
-    await delay(200);
     let result = [...demoDrivers];
     if (filters?.availableOnly)
       result = result.filter((d) => d.is_available);
@@ -169,7 +167,6 @@ export async function getDriverByUser(
   userId: string,
 ): Promise<DriverProfile | null> {
   if (useDemo) {
-    await delay(150);
     return demoDrivers.find((d) => d.user_id === userId) ?? null;
   }
   const { data, error } = await supabase
@@ -185,7 +182,6 @@ export async function getDriverById(
   driverId: string,
 ): Promise<DriverProfile | null> {
   if (useDemo) {
-    await delay(150);
     return demoDrivers.find((d) => d.id === driverId) ?? null;
   }
   const { data, error } = await supabase
@@ -212,7 +208,6 @@ export async function createDriverProfile(params: {
   licenseNumber?: string | null;
 }): Promise<{ driverId: string | null; error: string | null }> {
   if (useDemo) {
-    await delay(300);
     const newDriver: DriverProfile = {
       id: `driver-demo-${Date.now()}`,
       user_id: params.userId,
@@ -271,7 +266,6 @@ export async function updateDriverProfile(
   }>,
 ): Promise<{ error: string | null }> {
   if (useDemo) {
-    await delay(200);
     demoDrivers = demoDrivers.map((d) =>
       d.id === driverId ? { ...d, ...updates } : d,
     );
@@ -300,7 +294,6 @@ export async function getPendingDeliveriesForDriver(
   driverUserId: string,
 ): Promise<DeliveryRequest[]> {
   if (useDemo) {
-    await delay(200);
     const driver = demoDrivers.find((d) => d.user_id === driverUserId);
     if (!driver) return [];
     return demoRequests.filter(
@@ -325,7 +318,6 @@ export async function getDriverActiveDeliveries(
   driverUserId: string,
 ): Promise<DeliveryRequest[]> {
   if (useDemo) {
-    await delay(200);
     return demoRequests.filter(
       (r) =>
         r.driver_id === driverUserId &&
@@ -347,7 +339,6 @@ export async function getDriverDeliveryHistory(
   driverUserId: string,
 ): Promise<DeliveryRequest[]> {
   if (useDemo) {
-    await delay(200);
     return demoRequests
       .filter(
         (r) =>
@@ -377,7 +368,6 @@ export async function getSellerDeliveries(
   statusFilter?: DeliveryStatus | 'all',
 ): Promise<DeliveryRequest[]> {
   if (useDemo) {
-    await delay(200);
     let result = demoRequests.filter((r) => r.seller_id === sellerId);
     if (statusFilter && statusFilter !== 'all') {
       result = result.filter((r) => r.status === statusFilter);
@@ -405,7 +395,6 @@ export async function getDeliveryById(
   deliveryId: string,
 ): Promise<DeliveryRequest | null> {
   if (useDemo) {
-    await delay(150);
     return demoRequests.find((r) => r.id === deliveryId) ?? null;
   }
   const { data, error } = await supabase
@@ -430,7 +419,6 @@ export async function createDeliveryRequest(
   if (validation) return { deliveryId: null, error: validation };
 
   if (useDemo) {
-    await delay(300);
     const now = new Date().toISOString();
     const newId = `deliv-demo-${Date.now()}`;
     const newRequest: DeliveryRequest = {
@@ -580,7 +568,6 @@ export async function updateDeliveryStatus(
   }
 
   if (useDemo) {
-    await delay(200);
     demoRequests = demoRequests.map((r) =>
       r.id === deliveryId ? { ...r, ...updates } as typeof r : r,
     );
@@ -691,7 +678,6 @@ export async function acceptDeliveryWithPrice(
 
   // Mode démo : on muter directement le cache local
   if (useDemo) {
-    await delay(300);
     const target = demoRequests.find((r) => r.id === deliveryId);
     if (!target) return { error: 'Livraison introuvable.' };
     if (target.status !== 'pending') {
@@ -796,7 +782,6 @@ export async function getDeliveryPayment(
   deliveryId: string,
 ): Promise<DeliveryPayment | null> {
   if (useDemo) {
-    await delay(150);
     return demoPayments.find((p) => p.delivery_id === deliveryId) ?? null;
   }
   const { data, error } = await supabase
@@ -818,7 +803,6 @@ export async function uploadDeliveryPayment(
   if (!proofImageUrl) return { error: 'Preuve de paiement requise' };
 
   if (useDemo) {
-    await delay(300);
     const newPayment: DeliveryPayment = {
       id: `dpay-demo-${Date.now()}`,
       delivery_id: deliveryId,
@@ -854,7 +838,6 @@ export async function validateDeliveryPayment(
   deliveryId: string,
 ): Promise<{ error: string | null }> {
   if (useDemo) {
-    await delay(300);
     demoPayments = demoPayments.map((p) =>
       p.delivery_id === deliveryId
         ? { ...p, status: 'validated', validated_at: new Date().toISOString() }
@@ -888,7 +871,6 @@ export async function rejectDeliveryPayment(
   deliveryId: string,
 ): Promise<{ error: string | null }> {
   if (useDemo) {
-    await delay(300);
     demoPayments = demoPayments.map((p) =>
       p.delivery_id === deliveryId ? { ...p, status: 'rejected' } : p,
     );
@@ -913,7 +895,6 @@ export async function getDeliveryReviews(
   deliveryId: string,
 ): Promise<DeliveryReview[]> {
   if (useDemo) {
-    await delay(150);
     return demoReviews.filter((r) => r.delivery_id === deliveryId);
   }
   const { data, error } = await supabase
@@ -929,7 +910,6 @@ export async function getDriverReviews(
   driverUserId: string,
 ): Promise<DeliveryReview[]> {
   if (useDemo) {
-    await delay(150);
     // En démo, on retourne tous les avis des livraisons de ce livreur
     const driverDeliveries = demoRequests.filter(
       (r) => r.driver_id === driverUserId,
@@ -958,7 +938,6 @@ export async function addDeliveryReview(params: {
     return { error: 'La note doit être comprise entre 1 et 5' };
   }
   if (useDemo) {
-    await delay(200);
     const newReview: DeliveryReview = {
       id: `drev-demo-${Date.now()}`,
       delivery_id: params.deliveryId,
@@ -1002,7 +981,6 @@ export async function getDriverStats(
   driverUserId: string,
 ): Promise<DriverStats> {
   if (useDemo) {
-    await delay(200);
     const mine = demoRequests.filter((r) => r.driver_id === driverUserId);
     const completed = mine.filter((r) => r.status === 'delivered');
     const cancelled = mine.filter((r) => r.status === 'cancelled');
