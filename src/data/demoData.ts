@@ -336,6 +336,11 @@ const makeProduct = (
       product_id: id,
       image_url: url,
       position: i,
+      image_code: `img-${id}-${i}`,
+      storage_path: `products/${id}/images/${i}.jpg`,
+      mime_type: 'image/jpeg',
+      size_bytes: 1024 * 1024, // 1MB
+      created_at: '2026-03-01T10:00:00Z',
     })),
     videos: DEMO_PRODUCT_VIDEOS.filter((v) => v.product_id === id),
     shop: DEMO_SHOPS.find((s) => s.id === shopId),
@@ -435,7 +440,7 @@ export const DEMO_PROMOTIONS: Promotion[] = [
     visibility: 'home',
     status: 'active',
     shop: DEMO_SHOPS[0],
-    product: DEMO_PRODUCTS[0],
+    product: DEMO_PRODUCTS[0]
   },
   {
     id: 'promo-2',
@@ -447,7 +452,7 @@ export const DEMO_PROMOTIONS: Promotion[] = [
     visibility: 'home',
     status: 'active',
     shop: DEMO_SHOPS[1],
-    product: DEMO_PRODUCTS[3],
+    product: DEMO_PRODUCTS[3]
   },
 ];
 
@@ -463,7 +468,7 @@ export const DEMO_ORDERS: (Order & { items: OrderItem[]; payment?: Payment })[] 
     created_at: '2026-04-01T10:00:00Z',
     updated_at: '2026-04-03T10:00:00Z',
     items: [{ id: 'oi-1', order_id: 'order-1', product_id: 'p1', quantity: 1, unit_price: 15000, product: DEMO_PRODUCTS[0] }],
-    payment: { id: 'pay-1', order_id: 'order-1', amount: 15000, operator: 'orange_money', proof_image_url: null, status: 'validated', created_at: '2026-04-01T10:30:00Z', validated_at: '2026-04-01T11:00:00Z' },
+    payment: { id: 'pay-1', order_id: 'order-1', amount: 15000, operator: 'orange_money', proof_image_url: null, status: 'validated', created_at: '2026-04-01T10:30:00Z', validated_at: '2026-04-01T11:00:00Z', rejection_reason: null },
   },
   {
     id: 'order-2',
@@ -476,7 +481,7 @@ export const DEMO_ORDERS: (Order & { items: OrderItem[]; payment?: Payment })[] 
     created_at: '2026-07-20T10:00:00Z',
     updated_at: '2026-07-22T10:00:00Z',
     items: [{ id: 'oi-2', order_id: 'order-2', product_id: 'p2', quantity: 1, unit_price: 8500, product: DEMO_PRODUCTS[1] }],
-    payment: { id: 'pay-2', order_id: 'order-2', amount: 8500, operator: 'moov_money', proof_image_url: null, status: 'validated', created_at: '2026-07-20T10:45:00Z', validated_at: '2026-07-20T12:00:00Z' },
+    payment: { id: 'pay-2', order_id: 'order-2', amount: 8500, operator: 'moov_money', proof_image_url: null, status: 'validated', created_at: '2026-07-20T10:45:00Z', validated_at: '2026-07-20T12:00:00Z', rejection_reason: null },
   },
   {
     id: 'order-3',
@@ -489,7 +494,7 @@ export const DEMO_ORDERS: (Order & { items: OrderItem[]; payment?: Payment })[] 
     created_at: '2026-07-28T08:00:00Z',
     updated_at: '2026-07-28T08:30:00Z',
     items: [{ id: 'oi-3', order_id: 'order-3', product_id: 'p4', quantity: 1, unit_price: 3500, product: DEMO_PRODUCTS[3] }],
-    payment: { id: 'pay-3', order_id: 'order-3', amount: 3500, operator: 'orange_money', proof_image_url: null, status: 'pending', created_at: '2026-07-28T08:30:00Z', validated_at: null },
+    payment: { id: 'pay-3', order_id: 'order-3', amount: 3500, operator: 'orange_money', proof_image_url: null, status: 'pending', created_at: '2026-07-28T08:30:00Z', validated_at: null, rejection_reason: null },
   },
 ];
 
@@ -522,9 +527,9 @@ export const DEMO_CONVERSATIONS: Conversation[] = [
 ];
 
 export const DEMO_MESSAGES: Message[] = [
-  { id: 'm1', conversation_id: 'conv-1', sender_id: 'demo-buyer', content: 'Bonjour, est-ce que la robe wax est disponible en taille M ?', image_url: null, created_at: '2026-04-01T09:01:00Z', read: true },
-  { id: 'm2', conversation_id: 'conv-1', sender_id: 'demo-seller', content: 'Bonjour ! Oui nous avons la taille M en stock. Vous pouvez commander directement.', image_url: null, created_at: '2026-04-01T09:05:00Z', read: true },
-  { id: 'm3', conversation_id: 'conv-1', sender_id: 'demo-buyer', content: 'Parfait, merci ! Est-ce possible de négocier le prix ?', image_url: null, created_at: '2026-04-01T09:06:00Z', read: true },
+  { id: 'm1', conversation_id: 'conv-1', sender_id: 'demo-buyer', content: 'Bonjour, est-ce que la robe wax est disponible en taille M ?', image_url: null, audio_url: null, audio_duration: null, video_url: null, video_duration: null, video_thumbnail: null, created_at: '2026-04-01T09:01:00Z', read: true },
+  { id: 'm2', conversation_id: 'conv-1', sender_id: 'demo-seller', content: 'Bonjour ! Oui nous avons la taille M en stock. Vous pouvez commander directement.', image_url: null, audio_url: null, audio_duration: null, video_url: null, video_duration: null, video_thumbnail: null, created_at: '2026-04-01T09:05:00Z', read: true },
+  { id: 'm3', conversation_id: 'conv-1', sender_id: 'demo-buyer', content: 'Parfait, merci ! Est-ce possible de négocier le prix ?', image_url: null, audio_url: null, audio_duration: null, video_url: null, video_duration: null, video_thumbnail: null, created_at: '2026-04-01T09:06:00Z', read: true },
 ];
 
 export const DEMO_BUYER: Profile = {
@@ -899,7 +904,9 @@ export const DEMO_SHARE_LINKS: ShareLink[] = [
 ];
 
 export const DEMO_DISCOUNT_CODES: DiscountCode[] = [
-  {
+  { id: 'dc-1', shop_id: 'shop-1', code: 'WAX20', discount_type: 'percentage', discount_value: 20, min_order_amount: 5000, max_uses: 100, uses_count: 18, expires_at: '2026-09-30T23:59:59Z', status: 'active', created_at: '2026-07-01T08:00:00Z' },
+  { id: 'dc-2', shop_id: 'shop-2', code: 'KARITE1000', discount_type: 'fixed', discount_value: 1000, min_order_amount: 5000, max_uses: 50, uses_count: 11, expires_at: '2026-08-31T23:59:59Z', status: 'active', created_at: '2026-07-10T09:00:00Z' },
+  { id: 'dc-3', shop_id: 'shop-3', code: 'GATEAU15', discount_type: 'percentage', discount_value: 15, min_order_amount: 3000, max_uses: 0, uses_count: 4, expires_at: '2026-08-15T23:59:59Z', status: 'active', created_at: '2026-07-12T14:00:00Z' },  {
     id: 'dc-1',
     shop_id: 'shop-1',
     code: 'WAX20',
@@ -910,8 +917,8 @@ export const DEMO_DISCOUNT_CODES: DiscountCode[] = [
     uses_count: 18,
     expires_at: '2026-09-30T23:59:59Z',
     status: 'active',
-    created_at: '2026-07-01T08:00:00Z',
-  },
+    created_at: '2026-07-01T08:00:00Z'
+},
   {
     id: 'dc-2',
     shop_id: 'shop-2',
@@ -936,7 +943,7 @@ export const DEMO_DISCOUNT_CODES: DiscountCode[] = [
     uses_count: 4,
     expires_at: '2026-08-15T23:59:59Z',
     status: 'active',
-    created_at: '2026-07-12T14:00:00Z',
+    created_at: '2026-07-12T14:00:00Z'
   },
 ];
 
