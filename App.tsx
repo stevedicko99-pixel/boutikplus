@@ -7,12 +7,13 @@ import { __dbg } from '@/lib/debug-bootstrap';
 // #endregion
 __dbg('A', 'App.tsx:6', 'B0.2: App.tsx import hoisting complete');
 
-// ⚠️ CRITICAL ANDROID - #2 IMPORT.
+import React from 'react';
+// ⚠️ CRITICAL ANDROID - #3 IMPORT.
 // Sans cet import side-effect, react-native-gesture-handler 2.20+ crash
 // silencieusement sur Android natif.
 import 'react-native-gesture-handler';
 // #region debug-point A:gesture-handler-post
-__dbg('A', 'App.tsx:16', 'B1: react-native-gesture-handler imported OK');
+try { __dbg('A', 'App.tsx:16', 'B1: react-native-gesture-handler imported OK'); } catch {}
 // #endregion
 
 // ⚠️ CRITICAL ANDROID - react-native-screens 4.x doit être initialisé AVANT
@@ -108,17 +109,39 @@ __dbg('B', 'App.tsx:107', 'B4.4: TOUS les App.tsx imports ont été évalués');
 
 export default function App() {
   // #region debug-point B:app-function-called
-  __dbg('B', 'App.tsx:110', 'B5: fonction App() appelée (premier render React)');
+  try { __dbg('B', 'App.tsx:110', 'B5: fonction App() appelée (premier render React)'); } catch {}
   // #endregion
-  // Configure le handler de notifications push au premier-plan.
-  // Sans ça, les notifications ne s'affichent pas tant que l'app est ouverte.
-  useEffect(() => {
-    // #region debug-point B:mounted
-    __dbg('B', 'App.tsx:116', 'B6: useEffect mount → DOM/View rendu');
+
+  // ⚠️ MODE HELLO WORLD DE DIAGNOSTIC
+  // Retourne un composant minimal avant TOUT provider / navigator.
+  // Si on voit "BTIK OK" à l'écran :
+  //   → Tous les imports (gesture-handler, screens, RN, providers, navigator)
+  //     ont été ÉVALUÉS SANS THROW. Le crash est dans Providers/render ENFANT.
+  // Si on voit toujours PAGE BLANCHE :
+  //   → Crash est PENDANT l'évaluation DES IMPORTS (hoistés), donc avant App().
+  //     Cause probable: require d'un module natif (expo-av, expo-secure-store,
+  //     expo-file-system, react-native-reanimated) pendant l'évaluation.
+  try {
+    // eslint-disable-next-line no-undef
+    const RN = require('react-native') as typeof import('react-native');
+    const { View, Text, StyleSheet, SafeAreaView } = RN;
+    // Utilise un require() dynamique pour ne pas dépendre d'imports ES6 hoistés
+    // — ce try{}catch{} à l'intérieur de App() attrape les erreurs DE RENDU.
+    // #region debug-point B:hw-render
+    try { __dbg?.('B', 'App.tsx:133', 'B5.1: HELLO WORLD render commence (View/Text créés via require)'); } catch {}
     // #endregion
-    try { (setupForegroundNotificationHandler as unknown as () => Promise<void>)(); } catch {}
-  }, []);
-  useEffect(() => registerServiceWorker(), []);
+    return (
+      React.createElement(SafeAreaView, { style: { flex: 1, backgroundColor: '#FF6B00' } },
+        React.createElement(View, { style: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 16 } },
+          React.createElement(Text, { style: { color: '#fff', fontSize: 40, fontWeight: '900' } }, 'BTIK ✅ OK'),
+          React.createElement(Text, { style: { color: 'rgba(255,255,255,0.85)', fontSize: 18, textAlign: 'center' } }, 'Si tu lis ce message,\nTous les imports ont été chargés.\nLe crash est dans Providers/Navigator.'),
+          React.createElement(Text, { style: { color: '#FFE9C9', fontSize: 14, marginTop: 24 } }, 'v1.3.4-HELLO · App() reached · B5'),
+        )
+      )
+    );
+  } catch (hwErr: any) {
+    try { __dbg?.('B', 'App.tsx:149', 'B5-HW-ERR: HelloWorld render throw', { err: String(hwErr?.message || hwErr) }); } catch {}
+  }
 
   return (
     <GestureHandlerRootView style={styles.root}>
