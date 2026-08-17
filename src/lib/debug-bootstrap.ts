@@ -15,10 +15,11 @@
 import { Platform } from 'react-native';
 
 // Debug Server URLs — teste dans l'ordre, s'arrête au premier qui répond.
-// 1. 127.0.0.1:7777 via ADB reverse (adb reverse tcp:7777 tcp:7777) — tél. branché USB
-// 2. 10.248.239.25:7777 via Wi-Fi local — même réseau Wi-Fi (non VPN)
-// 3. Fallback vers ngrok/public si disponible (plus tard)
+// 1. 172.20.10.2:7777 — Wi-Fi hotspot iPhone (réseau actuel)
+// 2. 127.0.0.1:7777 — ADB reverse (USB)
+// 3. 10.248.239.25:7777 — VPN Freedome (fallback)
 const DEBUG_SERVER_URLS = [
+  'http://172.20.10.2:7777/event',
   'http://127.0.0.1:7777/event',
   'http://10.248.239.25:7777/event',
 ];
