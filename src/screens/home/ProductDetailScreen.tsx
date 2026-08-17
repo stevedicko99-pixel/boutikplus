@@ -9,7 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getProduct, findOrCreateConversation, incrementProductView, sendMessage, getMessages } from '@/lib/dataService';
+import { getProduct, findOrCreateConversation, incrementProductView, sendMessage, getMessages, isDemoMode } from '@/lib/dataService';
+import { DEMO_BUYER } from '@/data/demoData';
 import { getProductReviewStats, getProductReviews, type ProductReview } from '@/lib/productReviews';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { getCategoryName } from '@/constants/categories';
@@ -26,6 +27,9 @@ import { useFavorites } from '@/context/FavoriteContext';
 import { formatFCFA } from '@/lib/format';
 import { TextToSpeech } from '@/components/accessibility/TextToSpeech';
 import type { ProductWithImages } from '@/types/models';
+
+const screenWidth = Dimensions.get('window').width;
+const isNarrow = screenWidth < 400;
 
 interface ProductDetailScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
@@ -45,7 +49,7 @@ interface ReviewStats {
 export function ProductDetailScreen({ navigation, route }: ProductDetailScreenProps) {
   const { productId } = route.params;
   const { addItem } = useCart();
-  const { profile } = useAuth();
+  const { profile, setPendingReturnTo } = useAuth();
   const { isFav, toggleFavorite } = useFavorites();
   const [product, setProduct] = useState<ProductWithImages | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,28 +109,52 @@ export function ProductDetailScreen({ navigation, route }: ProductDetailScreenPr
     navigation.navigate('Checkout');
   };
 
-  const handleContact = async () => {
-    if (!shop || !profile) {
-      if (!profile) Alert.alert('Connexion requise', 'Connecte-toi pour contacter le vendeur');
+const handleContact = async () => {
+    if (!shop) return;
+    // CAS INVITÉ : rediriger vers Login, puis revenir sur cette conversation
+    if (!profile && !isDemoMode) {
+      setPendingReturnTo({
+        screen: 'ProductDetail',
+        params: { productId },
+      });
+      Alert.alert(
+        'Connexion requise',
+        'Connecte-toi pour discuter avec le vendeur. On revient directement sur cette page après !',
+        [
+          { text: 'Annuler' },
+          {
+            text: 'Se connecter',
+            onPress: () => navigation.navigate('Login', { returnTo: 'ProductDetail' }),
+          },
+        ],
+      );
       return;
     }
-    const convId = await findOrCreateConversation(profile.id, shop.owner_id, shop.id);
-    if (convId) {
-      // ✅ Message automatique lors de l'ouverture de la conversation
-      // (système anti-froid : l'acheteur n'a pas à écrire la 1ère phrase).
-      const autoMsg = `👋 Bonjour ${shop.name || 'vendeur'}, je suis intéressé(e) par "${product.name}"${product.price ? ` (${formatFCFA(product.price)} FCFA)` : ''}. Est-il disponible ?`;
-      try {
-        // Envoyer le message auto S'IL N'Y EN A PAS déjà un (éviter les doublons).
-        const existing = await getMessages(convId);
-        if (!existing || existing.length === 0) {
-          await sendMessage(convId, profile.id, autoMsg);
-        }
-      } catch {
-        // ignore (fallback silent : l'utilisateur voit quand même la conversation)
-      }
+    // En mode démo, on utilise le profil acheteur de démonstration
+    // (le site Vercel tourne sans Supabase → pas de vraie session possible).
+    const buyer = profile ?? DEMO_BUYER;
+    // Trouver ou créer la conversation
+    const convId = await findOrCreateConversation(buyer.id, shop.owner_id, shop.id);
+    if (!convId) {
+      Alert.alert('Oups', 'Impossible de lancer la conversation pour le moment.');
+      return;
     }
-    // Toujours naviguer, même si envoi auto échoue.
-    navigation.navigate('Chat', { conversationId: convId ?? 'conv-1', shopId: shop.id, productId: product.id });
+// ✅ Message automatique lors de l'ouverture de la conversation
+    const autoMsg = `👋 Bonjour ${shop.name || 'vendeur'}, je suis intéressé(e) par "${product.name}"${product.price ? ` (${formatFCFA(product.price)} FCFA)` : ''}. Est-il disponible ?`;
+    try {
+      // Envoyer systématiquement le message d'approche pour ce produit.
+      // En démo, sendMessage persiste le message en mémoire (demoMessageStore),
+      // donc il est visible dès l'ouverture du chat. On évite uniquement les
+      // doublons exacts soumis consécutivement.
+      const existing = await getMessages(convId);
+      const alreadyApproached = existing.some((m) => m.content === autoMsg);
+      if (!alreadyApproached) {
+        await sendMessage(convId, buyer.id, autoMsg);
+      }
+    } catch {
+      // ignore (fallback silent)
+    }
+    navigation.navigate('Chat', { conversationId: convId, shopId: shop.id, productId: product.id });
   };
 
   const handleToggleFav = () => {
@@ -178,7 +206,7 @@ export function ProductDetailScreen({ navigation, route }: ProductDetailScreenPr
         </View>
 
         {/* ─── Galerie plein écran ─── */}
-        <MediaCarousel images={images} videos={product.videos} height={420} />
+        <MediaCarousel images={images} videos={product.videos} height={isNarrow ? 320 : 420} />
 
         {/* ─── Contenu ─── */}
         <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -670,7 +698,7 @@ const styles = StyleSheet.create({
     }),
   },
   // Contenu
-  content: { padding: spacing.lg, paddingTop: spacing.md },
+  content: { padding: screenWidth < 400 ? spacing.md : spacing.lg, paddingTop: spacing.md },
   breadcrumb: { marginBottom: spacing.lg },
   // Tags
   tagRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md, flexWrap: 'wrap' },
@@ -702,11 +730,11 @@ const styles = StyleSheet.create({
   // Nom + prix — typographie impactante (style e-commerce premium)
   productName: {
     fontFamily: typography.fontFamily,
-    fontSize: typography.sizes.mega,
+    fontSize: isNarrow ? typography.sizes.title : typography.sizes.mega,
     fontWeight: typography.weights.extrabold,
     color: colors.ink,
     marginBottom: spacing.sm,
-    lineHeight: 40,
+    lineHeight: isNarrow ? 32 : 40,
     letterSpacing: typography.letterSpacings.tight,
   },
   priceRow: {
@@ -789,9 +817,10 @@ const styles = StyleSheet.create({
   // Trust badges — ligne premium avec séparateurs
   trustBadgesRow: {
     flexDirection: 'row',
-    marginBottom: spacing.lg,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
+    flexWrap: 'wrap',
+    marginBottom: isNarrow ? spacing.md : spacing.lg,
+    paddingVertical: isNarrow ? spacing.md : spacing.lg,
+    paddingHorizontal: spacing.sm,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.xl,
     borderWidth: 1,
@@ -824,11 +853,11 @@ const styles = StyleSheet.create({
   shopCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: isNarrow ? spacing.sm : spacing.md,
+    padding: isNarrow ? spacing.md : spacing.lg,
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
-    marginBottom: spacing.lg,
+    marginBottom: isNarrow ? spacing.md : spacing.lg,
     borderWidth: 1,
     borderColor: colors.borderLight,
     ...Platform.select({
@@ -1133,7 +1162,7 @@ const styles = StyleSheet.create({
   },
   // Actions secondaires
   secondaryActions: {
-    flexDirection: 'row',
+    flexDirection: isNarrow ? 'column' : 'row',
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
@@ -1159,10 +1188,10 @@ const styles = StyleSheet.create({
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
+    gap: spacing.xs,
+    paddingHorizontal: isNarrow ? spacing.md : spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: isNarrow ? spacing.lg : spacing.xxl,
     backgroundColor: 'rgba(255, 255, 255, 0.94)',
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
@@ -1207,7 +1236,7 @@ const styles = StyleSheet.create({
     minWidth: 28, textAlign: 'center',
   },
   ctaBtn: {
-    height: 54,
+    height: isNarrow ? 48 : 54,
     borderRadius: radius.xl,
   },
 });

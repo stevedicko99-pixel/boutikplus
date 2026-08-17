@@ -20,6 +20,8 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const INDEX = path.join(DIST, 'index.html');
 const NODE_MODULES = path.join(ROOT, 'node_modules');
+const PUBLIC_SW = path.join(ROOT, 'public', 'sw.js');
+const DIST_SW = path.join(DIST, 'sw.js');
 
 /* ── Configuration SEO ─────────────────────────────────────────────── */
 const APP_URL = 'https://boutikplus.vercel.app';
@@ -129,6 +131,7 @@ html = html.slice(0, headEndIdx) + metaTags + '\n' + html.slice(headEndIdx);
 
 /* ── 3. Écrire le fichier index.html final ─────────────────────────── */
 fs.writeFileSync(INDEX, html, 'utf-8');
+if (fs.existsSync(PUBLIC_SW)) fs.copyFileSync(PUBLIC_SW, DIST_SW);
 
 /* ── 4. Copier les assets (fonts, images) référencés dans le bundle ──
  * Le bundle Expo export utilise le pattern :
@@ -283,6 +286,17 @@ const distVercelJson = {
     { source: '/((?!.*\\.).*)', destination: '/index.html' },
   ],
   headers: [
+    {
+      source: '/sw.js',
+      headers: [
+        { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+        { key: 'Service-Worker-Allowed', value: '/' },
+      ],
+    },
+    {
+      source: '/index.html',
+      headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+    },
     {
       source: '/download/(.*)\\.apk',
       headers: [

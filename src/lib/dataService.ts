@@ -29,9 +29,11 @@ import type {
   Message,
   OrderStatus,
   PaymentOperatorId,
+  PaymentStatus,
   UserRole,
   ProductStatus,
 } from '@/types/models';
+import type { Json } from '@/types/database';
 
 const useDemo = !isSupabaseConfigured;
 
@@ -97,17 +99,24 @@ export async function getShops(filters?: {
     }
     return filters?.limit ? result.slice(0, filters.limit) : result;
   }
-  let query = supabase
-    .from('shops')
-    .select('*')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false });
-  if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
-  if (filters?.city) query = query.eq('city', filters.city);
-  if (filters?.limit) query = query.limit(filters.limit);
-  const { data, error } = await query;
-  if (error) console.error('getShops:', error.message);
-  return (data as Shop[]) ?? [];
+  const cacheKey = `shops:${JSON.stringify(filters ?? {})}`;
+  return getOrSetCache<Shop[]>(
+    cacheKey,
+    async () => {
+      let query = supabase
+        .from('shops')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+      if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
+      if (filters?.city) query = query.eq('city', filters.city);
+      if (filters?.limit) query = query.limit(filters.limit);
+      const { data, error } = await query;
+      if (error) console.error('getShops:', error.message);
+      return (data as Shop[]) ?? [];
+    },
+    { ttlMs: TTL.MEDIUM, staleWhileRevalidate: true },
+  );
 }
 
 export async function getShop(shopId: string): Promise<Shop | null> {
@@ -115,13 +124,19 @@ export async function getShop(shopId: string): Promise<Shop | null> {
     await delay(150);
     return DEMO_SHOPS.find((s) => s.id === shopId) ?? null;
   }
-  const { data, error } = await supabase
-    .from('shops')
-    .select('*')
-    .eq('id', shopId)
-    .single();
-  if (error) console.error('getShop:', error.message);
-  return data as Shop | null;
+  return getOrSetCache<Shop | null>(
+    cacheKeys.shop(shopId),
+    async () => {
+      const { data, error } = await supabase
+        .from('shops')
+        .select('*')
+        .eq('id', shopId)
+        .single();
+      if (error) console.error('getShop:', error.message);
+      return data as Shop | null;
+    },
+    { ttlMs: TTL.LONG, staleWhileRevalidate: true },
+  );
 }
 
 export async function getShopByOwner(ownerId: string): Promise<Shop | null> {
@@ -133,7 +148,9 @@ export async function getShopByOwner(ownerId: string): Promise<Shop | null> {
     .from('shops')
     .select('*')
     .eq('owner_id', ownerId)
-    .single();
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
   if (error) console.error('getShopByOwner:', error.message);
   return data as Shop | null;
 }
@@ -173,24 +190,31 @@ export async function getProducts(
     const limit = filters?.limit ?? 50;
     return result.slice(offset, offset + limit).map(sortProductMedia);
   }
-  let query = supabase
-    .from('products')
-    .select('*, shop:shops(*), images:product_images(*), videos:product_videos(*)')
-    .eq('status', 'available')
-    .order('created_at', { ascending: false });
-  if (filters?.query) {
-    const q = filters.query.toLowerCase();
-    query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
-  }
-  if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
-  if (filters?.minPrice != null) query = query.gte('price', filters.minPrice);
-  if (filters?.maxPrice != null) query = query.lte('price', filters.maxPrice);
-  const offset = filters?.offset ?? 0;
-  const limit = filters?.limit ?? 50;
-  query = query.range(offset, offset + limit - 1);
-  const { data, error } = await query;
-  if (error) console.error('getProducts:', error.message);
-  return ((data as ProductWithImages[]) ?? []).map(sortProductMedia);
+  const cacheKey = cacheKeys.productsList(JSON.stringify(filters ?? {}));
+  return getOrSetCache<ProductWithImages[]>(
+    cacheKey,
+    async () => {
+      let query = supabase
+        .from('products')
+        .select('*, shop:shops(*), images:product_images(*), videos:product_videos(*)')
+        .eq('status', 'available')
+        .order('created_at', { ascending: false });
+      if (filters?.query) {
+        const q = filters.query.toLowerCase();
+        query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
+      }
+      if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
+      if (filters?.minPrice != null) query = query.gte('price', filters.minPrice);
+      if (filters?.maxPrice != null) query = query.lte('price', filters.maxPrice);
+      const offset = filters?.offset ?? 0;
+      const limit = filters?.limit ?? 50;
+      query = query.range(offset, offset + limit - 1);
+      const { data, error } = await query;
+      if (error) console.error('getProducts:', error.message);
+      return ((data as ProductWithImages[]) ?? []).map(sortProductMedia);
+    },
+    { ttlMs: TTL.SHORT, staleWhileRevalidate: true },
+  );
 }
 
 export async function getProduct(
@@ -200,13 +224,19 @@ export async function getProduct(
     await delay(150);
     return DEMO_PRODUCTS.find((p) => p.id === productId) ?? null;
   }
-  const { data, error } = await supabase
-    .from('products')
-    .select('*, shop:shops(*), images:product_images(*), videos:product_videos(*)')
-    .eq('id', productId)
-    .single();
-  if (error) console.error('getProduct:', error.message);
-  return data as ProductWithImages | null;
+  return getOrSetCache<ProductWithImages | null>(
+    cacheKeys.product(productId),
+    async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, shop:shops(*), images:product_images(*), videos:product_videos(*)')
+        .eq('id', productId)
+        .single();
+      if (error) console.error('getProduct:', error.message);
+      return data as ProductWithImages | null;
+    },
+    { ttlMs: TTL.MEDIUM, staleWhileRevalidate: true },
+  );
 }
 
 export async function getProductsByShop(
@@ -216,13 +246,19 @@ export async function getProductsByShop(
     await delay(200);
     return DEMO_PRODUCTS.filter((p) => p.shop_id === shopId);
   }
-  const { data, error } = await supabase
-    .from('products')
-    .select('*, images:product_images(*), videos:product_videos(*)')
-    .eq('shop_id', shopId)
-    .order('created_at', { ascending: false });
-  if (error) console.error('getProductsByShop:', error.message);
-  return ((data as ProductWithImages[]) ?? []).map(sortProductMedia);
+  return getOrSetCache<ProductWithImages[]>(
+    `products:shop:${shopId}`,
+    async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, shop:shops(*), images:product_images(*), videos:product_videos(*)')
+        .eq('shop_id', shopId)
+        .order('created_at', { ascending: false });
+      if (error) console.error('getProductsByShop:', error.message);
+      return ((data as ProductWithImages[]) ?? []).map(sortProductMedia);
+    },
+    { ttlMs: TTL.SHORT, staleWhileRevalidate: true },
+  );
 }
 
 // ---------- Vues produits ----------
@@ -272,7 +308,7 @@ export async function getShopReviews(shopId: string): Promise<Review[]> {
   }
   const { data, error } = await supabase
     .from('reviews')
-    .select('*, user:profiles(id, full_name, avatar_url)')
+    .select('*, user:profiles!reviews_user_id_fkey(id, full_name, avatar_url)')
     .eq('shop_id', shopId)
     .order('created_at', { ascending: false });
   if (error) console.error('getShopReviews:', error.message);
@@ -304,14 +340,20 @@ export async function getActivePromotions(): Promise<Promotion[]> {
     await delay(150);
     return DEMO_PROMOTIONS;
   }
-  const { data, error } = await supabase
-    .from('promotions')
-    .select('*, shop:shops(*), product:products(*)')
-    .eq('status', 'active')
-    .lte('start_date', new Date().toISOString())
-    .gte('end_date', new Date().toISOString());
-  if (error) console.error('getActivePromotions:', error.message);
-  return (data as unknown as Promotion[]) ?? [];
+  return getOrSetCache<Promotion[]>(
+    'promotions:active',
+    async () => {
+      const { data, error } = await supabase
+        .from('promotions')
+        .select('*, shop:shops(*), product:products(*, images:product_images(*))')
+        .eq('status', 'active')
+        .lte('start_date', new Date().toISOString())
+        .gte('end_date', new Date().toISOString());
+      if (error) console.error('getActivePromotions:', error.message);
+      return (data as unknown as Promotion[]) ?? [];
+    },
+    { ttlMs: TTL.SHORT, staleWhileRevalidate: true },
+  );
 }
 
 // ---------- Adresses ----------
@@ -370,11 +412,17 @@ export async function getBuyerOrders(
   }
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*)), payment:payments(*), shop:shops(*)')
+    .select('*, items:order_items(*, product:products(*, shop:shops(*))), payment:payments(*)')
     .eq('buyer_id', buyerId)
     .order('created_at', { ascending: false });
-  if (error) console.error('getBuyerOrders:', error.message);
-  return (data as any[]) ?? [];
+  if (error) {
+    console.error('getBuyerOrders: impossible de charger les commandes acheteur:', error.message);
+    return [];
+  }
+  return ((data as any[]) ?? []).map((order) => ({
+    ...order,
+    shop: order.items?.[0]?.product?.shop,
+  }));
 }
 
 export async function getSellerOrders(
@@ -408,65 +456,38 @@ export async function createOrder(params: {
     const id = `order-demo-${Date.now()}`;
     return { orderId: id, error: null };
   }
-  const base: any = {
-    buyer_id: params.buyerId,
-    seller_id: params.sellerId,
-    total_amount: params.totalAmount,
-    delivery_address_id: params.addressId,
-    note: params.note ?? null,
-    status: 'pending_payment',
-  };
-  // Colonnes potentiellement absentes en production ancienne → tentative puis fallback.
-  try {
-    const payloadWithDelivery = {
-      ...base,
-      include_delivery: params.includeDelivery ?? null,
-      delivery_fee: params.deliveryFee ?? null,
-    };
-    const { data, error } = await supabase
-      .from('orders')
-      .insert(payloadWithDelivery)
-      .select('id')
-      .single();
-    if (error) {
-      // Colonne inconnue → fallback sans les cols livraison
-      if (error.message.includes('column') && error.message.includes('does not exist')) {
-        return doCreateOrderFallback(base, params.items);
-      }
-      return { orderId: null, error: error.message };
-    }
-    const orderId = data.id;
-    const orderItems = params.items.map((it) => ({
-      order_id: orderId,
-      product_id: it.product_id,
-      quantity: it.quantity,
-      unit_price: it.unit_price,
-      variant_info: it.variant_info ?? null,
-    }));
-    await supabase.from('order_items').insert(orderItems as any);
-    return { orderId, error: null };
-  } catch (e: any) {
-    return doCreateOrderFallback(base, params.items);
-  }
+  const { data, error } = await supabase.rpc('create_order_with_items', {
+    p_seller_id: params.sellerId,
+    p_total_amount: params.totalAmount,
+    p_address_id: params.addressId,
+    p_note: params.note ?? null,
+    p_items: params.items.map((item) => ({
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      variant_info: item.variant_info ?? null,
+    })),
+  });
+
+  return { orderId: data ?? null, error: error?.message ?? null };
 }
 
-async function doCreateOrderFallback(base: any, items: typeof createOrder extends (p: infer P) => any ? P extends { items: infer I } ? I : never : never): Promise<{ orderId: string | null; error: string | null }> {
-  try {
-    const { data, error } = await supabase.from('orders').insert(base).select('id').single();
-    if (error) return { orderId: null, error: error.message };
-    const orderId = data.id;
-    const orderItems = (items as any[]).map((it: any) => ({
-      order_id: orderId,
-      product_id: it.product_id,
-      quantity: it.quantity,
-      unit_price: it.unit_price,
-      variant_info: it.variant_info ?? null,
-    }));
-    await supabase.from('order_items').insert(orderItems as any);
-    return { orderId, error: null };
-  } catch (e: any) {
-    return { orderId: null, error: e?.message ?? String(e) };
-  }
+export interface PaymentProofResult {
+  payment_id: string;
+  payment_status: PaymentStatus;
+  order_status: OrderStatus;
+}
+
+export async function getPaymentProofState(orderId: string): Promise<PaymentProofResult | null> {
+  if (useDemo) return { payment_id: `payment-${orderId}`, payment_status: 'pending', order_status: 'proof_uploaded' };
+  const { data } = await supabase
+    .from('orders')
+    .select('status, payment:payments(id,status)')
+    .eq('id', orderId)
+    .maybeSingle();
+  const payment = Array.isArray((data as any)?.payment) ? (data as any).payment[0] : (data as any)?.payment;
+  if (!data || !payment) return null;
+  return { payment_id: payment.id, payment_status: payment.status, order_status: (data as any).status };
 }
 
 export async function uploadPaymentProof(
@@ -474,24 +495,38 @@ export async function uploadPaymentProof(
   amount: number,
   operator: PaymentOperatorId,
   proofImageUrl: string,
-): Promise<{ error: string | null }> {
+): Promise<{ data: PaymentProofResult | null; error: string | null; uncertain?: boolean }> {
   if (useDemo) {
     await delay(300);
-    return { error: null };
+    return { data: await getPaymentProofState(orderId), error: null };
   }
-  const { error } = await supabase.from('payments').insert({
-    order_id: orderId,
-    amount,
-    operator,
-    proof_image_url: proofImageUrl,
-    status: 'pending',
-  } as any);
-  if (error) return { error: error.message };
-  await supabase
-    .from('orders')
-    .update({ status: 'proof_uploaded' })
-    .eq('id', orderId);
-  return { error: null };
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await supabase.rpc('submit_payment_proof', {
+        p_order_id: orderId,
+        p_amount: amount,
+        p_operator: operator,
+        p_proof_image_url: proofImageUrl,
+      });
+      if (!error) {
+        const result = Array.isArray(data) ? data[0] : data;
+        return { data: result as PaymentProofResult, error: null };
+      }
+      const transient = /network|fetch|timeout|timed out|5\d\d/i.test(error.message ?? '');
+      if (!transient) return { data: null, error: error.message };
+      const current = await getPaymentProofState(orderId);
+      if (current) return { data: current, error: null, uncertain: true };
+      if (attempt === 1) return { data: null, error: error.message };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/network|fetch|timeout|timed out/i.test(message)) {
+      const current = await getPaymentProofState(orderId);
+      if (current) return { data: current, error: null, uncertain: true };
+    }
+    return { data: null, error: message };
+  }
+  return { data: null, error: 'Envoi de la preuve non confirmé' };
 }
 
 export async function validatePayment(
@@ -501,16 +536,10 @@ export async function validatePayment(
     await delay(300);
     return { error: null };
   }
-  const { error: payErr } = await supabase
-    .from('payments')
-    .update({ status: 'validated', validated_at: new Date().toISOString() })
-    .eq('order_id', orderId);
-  if (payErr) return { error: payErr.message };
-  const { error: ordErr } = await supabase
-    .from('orders')
-    .update({ status: 'payment_validated' })
-    .eq('id', orderId);
-  return { error: ordErr?.message ?? null };
+  const { error } = await supabase.rpc('validate_order_payment', {
+    p_order_id: orderId,
+  });
+  return { error: error?.message ?? null };
 }
 
 export async function rejectPayment(
@@ -521,13 +550,11 @@ export async function rejectPayment(
     await delay(300);
     return { error: null };
   }
-  const { error } = await supabase
-    .from('payments')
-    .update({ status: 'rejected', rejection_reason: reason ?? null } as any)
-    .eq('order_id', orderId);
-  if (error) return { error: error.message };
-  await supabase.from('orders').update({ status: 'cancelled', cancellation_reason: reason ?? null } as any).eq('id', orderId);
-  return { error: null };
+  const { error } = await supabase.rpc('reject_order_payment', {
+    p_order_id: orderId,
+    p_reason: reason?.trim() || 'Preuve de paiement refusée par le vendeur',
+  });
+  return { error: error?.message ?? null };
 }
 
 export async function updateOrderStatus(
@@ -586,8 +613,13 @@ export async function getMessages(conversationId: string): Promise<Message[]> {
 export async function sendMessage(
   conversationId: string,
   senderId: string,
-  content: string,
+  content: string | null,
   imageUrl?: string | null,
+  audioUrl?: string | null,
+  audioDuration?: number | null,
+  videoUrl?: string | null,
+  videoDuration?: number | null,
+  videoThumbnail?: string | null,
 ): Promise<Message | null> {
   if (useDemo) {
     await delay(100);
@@ -597,6 +629,11 @@ export async function sendMessage(
       sender_id: senderId,
       content,
       image_url: imageUrl ?? null,
+      audio_url: audioUrl ?? null,
+      audio_duration: audioDuration ?? null,
+      video_url: videoUrl ?? null,
+      video_duration: videoDuration ?? null,
+      video_thumbnail: videoThumbnail ?? null,
       created_at: new Date().toISOString(),
       read: false,
     };
@@ -613,6 +650,11 @@ export async function sendMessage(
       sender_id: senderId,
       content,
       image_url: imageUrl ?? null,
+      audio_url: audioUrl ?? null,
+      audio_duration: audioDuration ?? null,
+      video_url: videoUrl ?? null,
+      video_duration: videoDuration ?? null,
+      video_thumbnail: videoThumbnail ?? null,
     })
     .select('*')
     .single();
@@ -652,6 +694,14 @@ if (useDemo) {
 }
 
 // ---------- Vendeur : produits CRUD ----------
+export interface ProductImageInput {
+  image_url: string;
+  image_code?: string | null;
+  storage_path?: string | null;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+}
+
 export async function createProduct(params: {
   shopId: string;
   name: string;
@@ -659,11 +709,11 @@ export async function createProduct(params: {
   price: number;
   categoryId: string;
   stock: number;
-  imageUrls: string[];
-}): Promise<{ error: string | null }> {
+  imageUrls?: string[];
+}): Promise<{ productId: string | null; error: string | null }> {
   if (useDemo) {
     await delay(300);
-    return { error: null };
+    return { productId: `product-demo-${Date.now()}`, error: null };
   }
   const { data, error } = await supabase
     .from('products')
@@ -678,27 +728,45 @@ export async function createProduct(params: {
     })
     .select('id')
     .single();
-  if (error) return { error: error.message };
-  if (params.imageUrls.length) {
-    const imgs = params.imageUrls.map((url, i) => ({
-      product_id: data.id,
-      image_url: url,
-      position: i,
-    }));
-    const { error: imageError } = await supabase.from('product_images').insert(imgs);
-    if (imageError) {
+  if (error) return { productId: null, error: error.message };
+  if (params.imageUrls?.length) {
+    const imageResult = await setProductImages(data.id, params.imageUrls.map((image_url) => ({ image_url })));
+    if (imageResult.error) {
       await supabase.from('products').delete().eq('id', data.id);
-      return { error: imageError.message };
+      return { productId: null, error: imageResult.error };
     }
   }
-  return { error: null };
+  return { productId: data.id, error: null };
+}
+
+export async function setProductImages(
+  productId: string,
+  images: ProductImageInput[],
+): Promise<{ error: string | null }> {
+  if (useDemo) return { error: null };
+  const imagePayload: Json = images.map((image) => ({
+    image_url: image.image_url,
+    image_code: image.image_code ?? null,
+    storage_path: image.storage_path ?? null,
+    mime_type: image.mime_type ?? null,
+    size_bytes: image.size_bytes ?? null,
+  }));
+  const { error } = await supabase.rpc('set_product_images', {
+    p_product_id: productId,
+    p_images: imagePayload,
+  });
+  return { error: error?.message ?? null };
+}
+
+export async function deleteProductDraft(productId: string): Promise<void> {
+  if (!useDemo) await supabase.from('products').delete().eq('id', productId);
 }
 
 export async function updateProduct(
   productId: string,
   params: Partial<{
     name: string;
-    description: string;
+    description: string | null;
     price: number;
     category_id: string;
     stock: number;
@@ -710,19 +778,12 @@ export async function updateProduct(
     await delay(200);
     return { error: null };
   }
-  // Séparer image_urls car c'est une relation (products_images) à mettre à jour
-  // via la procédure dédiée set_product_images, si fournie.
   let imageUrlsErr: string | null = null;
   if (params.image_urls) {
-    try {
-      const { error: rpcErr } = await (supabase.rpc as any)('set_product_images', {
-        p_product_id: productId,
-        p_image_urls: params.image_urls,
-      });
-      if (rpcErr) imageUrlsErr = rpcErr.message;
-    } catch (e: any) {
-      imageUrlsErr = e?.message ?? 'set_product_images RPC indisponible';
-    }
+    imageUrlsErr = (await setProductImages(
+      productId,
+      params.image_urls.map((image_url) => ({ image_url })),
+    )).error;
   }
   const payload = { ...params };
   delete payload.image_urls;
@@ -735,25 +796,16 @@ export async function updateProduct(
 
 export async function deleteProduct(productId: string): Promise<{ error: string | null }> {
   if (useDemo) return { error: null };
-  try {
-    // 1. Supprimer d'abord les vidéos associées (pas de CASCADE garanti)
-    await supabase.from('product_videos').delete().eq('product_id', productId);
-    // 2. Supprimer les images (product_images) — la RPC set_product_images gère
-    //    les remplacements, mais pour le delete on nettoie aussi direct
-    await supabase.from('product_images').delete().eq('product_id', productId);
-    // 3. Supprimer les favoris liés à ce produit
-    try { await supabase.from('favorites').delete().eq('product_id', productId); } catch { /* noop */ }
-    // 4. Enfin, supprimer le produit (CASCADE supprimera ce qui reste)
-    const { error } = await supabase.from('products').delete().eq('id', productId);
-    if (error) {
-      console.error('deleteProduct final step error:', error.message);
-      return { error: error.message };
-    }
-    return { error: null };
-  } catch (e: any) {
-    console.error('deleteProduct unexpected error:', e?.message);
-    return { error: e?.message ?? 'Erreur lors de la suppression' };
+  const { data, error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', productId)
+    .select('id');
+  if (error) return { error: error.message };
+  if (data?.length !== 1) {
+    return { error: 'Produit introuvable ou suppression non autorisée' };
   }
+  return { error: null };
 }
 
 export async function createShop(params: {
@@ -803,7 +855,6 @@ export async function createShop(params: {
       address: params.address ?? null,
       opening_hours: (params.openingHours ?? {}) as Record<string, unknown>,
       social_links: (params.socialLinks ?? {}) as Record<string, unknown>,
-      status: 'pending',
     } as any)
     .select('id')
     .single();
@@ -870,34 +921,11 @@ export async function createPromotion(params: {
 }
 
 // ---------- Admin ----------
-export async function getPendingShops(): Promise<Shop[]> {
-  if (useDemo) {
-    await delay(200);
-    return DEMO_SHOPS.slice(0, 2);
-  }
-  const { data, error } = await supabase
-    .from('shops')
-    .select('*')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false });
-  if (error) console.error('getPendingShops:', error.message);
-  return (data as Shop[]) ?? [];
-}
-
-export async function approveShop(shopId: string): Promise<{ error: string | null }> {
+export async function updateShopStatus(shopId: string, status: Shop['status']): Promise<{ error: string | null }> {
   if (useDemo) { await delay(200); return { error: null }; }
   const { error } = await supabase
     .from('shops')
-    .update({ status: 'active', updated_at: new Date().toISOString() } as any)
-    .eq('id', shopId);
-  return { error: error?.message ?? null };
-}
-
-export async function rejectShop(shopId: string, reason: string): Promise<{ error: string | null }> {
-  if (useDemo) { await delay(200); return { error: null }; }
-  const { error } = await supabase
-    .from('shops')
-    .update({ status: 'rejected', rejection_reason: reason, updated_at: new Date().toISOString() } as any)
+    .update({ status, updated_at: new Date().toISOString() } as any)
     .eq('id', shopId);
   return { error: error?.message ?? null };
 }

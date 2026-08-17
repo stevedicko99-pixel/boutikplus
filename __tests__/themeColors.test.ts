@@ -17,12 +17,12 @@ describe('Palette "Fil de Faso" — non-régression chromatique', () => {
       expect(rgb).toEqual({ r: 255, g: 248, b: 242 });
     });
 
-    it('surface reste blanc pur #FFFFFF (cartes)', () => {
-      expect(colors.surface).toBe('#FFFFFF');
+    it('surface conserve le blanc chaud #FFFCF8 (cartes)', () => {
+      expect(colors.surface).toBe('#FFFCF8');
     });
 
-    it('surfaceAlt conserve le crème karité #FFF1E8', () => {
-      expect(colors.surfaceAlt).toBe('#FFF1E8');
+    it('surfaceAlt conserve le crème karité #F9EDE1', () => {
+      expect(colors.surfaceAlt).toBe('#F9EDE1');
     });
 
     it('le blanc karité n\'est JAMAIS remplacé par un blanc pur Pinduoduo', () => {
@@ -34,22 +34,22 @@ describe('Palette "Fil de Faso" — non-régression chromatique', () => {
   });
 
   describe('Couleurs de marque (piment de Faso)', () => {
-    it('primary est le corail #FF8A5C', () => {
-      expect(colors.primary).toBe('#FF8A5C');
+    it('primary est le terracotta #D9683A', () => {
+      expect(colors.primary).toBe('#D9683A');
     });
 
-    it('primaryDeep est le terracotta profond #C0491E', () => {
-      expect(colors.primaryDeep).toBe('#C0491E');
+    it('primaryDeep est le terracotta profond #85351F', () => {
+      expect(colors.primaryDeep).toBe('#85351F');
     });
 
-    it('secondary est l\'indigo de tissage #8B6FE0', () => {
-      expect(colors.secondary).toBe('#8B6FE0');
+    it('secondary est le brun de tissage #70604B', () => {
+      expect(colors.secondary).toBe('#70604B');
     });
   });
 
   describe('Accents fonctionnels (conformes normes design)', () => {
-    it('promo rouge Pinduoduo #E02020 présent pour badges prix', () => {
-      expect(colors.promo).toBe('#E02020');
+    it('promo rouge profond #C92F2F présent pour badges prix', () => {
+      expect(colors.promo).toBe('#C92F2F');
     });
 
     it('success vert #16B364 — accent UI (utilisé sur fond teinté, pas sur background brut)', () => {
@@ -78,12 +78,12 @@ describe('Palette "Fil de Faso" — non-régression chromatique', () => {
   });
 
   describe('Fils de couture (stitch)', () => {
-    it('stitch corail pâle #FFB089', () => {
-      expect(colors.stitch).toBe('#FFB089');
+    it('stitch corail pâle #E69A70', () => {
+      expect(colors.stitch).toBe('#E69A70');
     });
 
-    it('stitchDeep corail accentué #E66A3A', () => {
-      expect(colors.stitchDeep).toBe('#E66A3A');
+    it('stitchDeep terracotta accentué #B84A26', () => {
+      expect(colors.stitchDeep).toBe('#B84A26');
     });
   });
 

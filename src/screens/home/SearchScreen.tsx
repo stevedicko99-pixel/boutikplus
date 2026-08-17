@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Pressable, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, Text, Pressable, ScrollView, ActivityIndicator, FlatList, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { MasonryFlashList } from '@shopify/flash-list';
@@ -32,6 +32,7 @@ export function SearchScreen({ navigation, route }: SearchScreenProps) {
   const { width } = useWindowDimensions();
   const columns = width >= 1180 ? 4 : width >= 760 ? 3 : 2;
   const pagePadding = width >= 760 ? spacing.xxl : spacing.md;
+  const ProductList: any = Platform.OS === 'web' ? FlatList : MasonryFlashList;
   const [query, setQuery] = useState(route?.params?.query ?? '');
   const [categoryId, setCategoryId] = useState<string | null>(route?.params?.categoryId ?? null);
   const [city, setCity] = useState<string | null>(route?.params?.city ?? null);
@@ -114,10 +115,10 @@ export function SearchScreen({ navigation, route }: SearchScreenProps) {
           <View style={styles.resultsPane}>
             <View style={styles.resultInfo}><Text style={styles.resultTitle}>Sélection locale</Text><Text style={styles.resultCount}>{loading ? 'Recherche…' : `${results.length} résultat${results.length > 1 ? 's' : ''}`}</Text></View>
             {loading ? <SkeletonProductGrid count={6} /> : results.length === 0 ? <EmptyState icon="search" title="Aucun résultat" message="Essayez d’autres mots-clés ou modifiez les filtres" /> : (
-              <MasonryFlashList<ProductWithImages>
+              <ProductList
                 key={`search-${columns}`}
                 data={results}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item: ProductWithImages) => item.id}
                 numColumns={columns}
                 estimatedItemSize={300}
                 drawDistance={400}
@@ -125,7 +126,7 @@ export function SearchScreen({ navigation, route }: SearchScreenProps) {
                 onEndReachedThreshold={0.4}
                 ListFooterComponent={loadingMore && hasMore ? <ActivityIndicator style={styles.loadingMore} color={colors.primary} /> : null}
                 contentContainerStyle={styles.listContent}
-                renderItem={({ item }) => <View style={styles.gridItem}><ProductCard product={item} onPress={() => navigation.navigate('ProductDetail', { productId: item.id })} /></View>}
+                renderItem={({ item }: { item: ProductWithImages }) => <View style={styles.gridItem}><ProductCard product={item} onPress={() => navigation.navigate('ProductDetail', { productId: item.id })} /></View>}
               />
             )}
           </View>
@@ -174,7 +175,7 @@ const styles = StyleSheet.create({
   resultInfo: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: spacing.md },
   resultTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.ink },
   resultCount: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted },
-  gridItem: { width: '100%', paddingHorizontal: spacing.xs },
+  gridItem: { flex: 1, paddingHorizontal: spacing.xs },
   loadingMore: { paddingVertical: spacing.lg },
   listContent: { paddingBottom: 110 },
   pressed: { opacity: 0.72 },

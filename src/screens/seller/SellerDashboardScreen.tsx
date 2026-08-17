@@ -149,8 +149,8 @@ export function SellerDashboardScreen({ navigation }: SellerDashboardScreenProps
         <View style={{ flex: 1, marginLeft: spacing.md }}>
           <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: shop.status === 'active' ? colors.success : shop.status === 'pending' ? colors.warning : colors.textMuted }]} />
-            <Text style={styles.statusText}>{shop.status === 'active' ? 'Active' : shop.status === 'pending' ? 'En attente de validation' : shop.status === 'rejected' ? 'Refusée' : 'En pause'}</Text>
+            <View style={[styles.statusDot, { backgroundColor: shop.status === 'active' ? colors.success : colors.textMuted }]} />
+            <Text style={styles.statusText}>{shop.status === 'active' ? 'Active' : 'En pause'}</Text>
           </View>
         </View>
         <View style={styles.headerActions}>

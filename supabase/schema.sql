@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Types énumérés
 -- ============================================================
 CREATE TYPE user_role AS ENUM ('buyer', 'seller', 'admin');
-CREATE TYPE shop_status AS ENUM ('active', 'paused', 'pending');
+CREATE TYPE shop_status AS ENUM ('active', 'paused');
 CREATE TYPE product_status AS ENUM ('available', 'out_of_stock');
 CREATE TYPE order_status AS ENUM (
   'pending_payment',
@@ -21,7 +21,7 @@ CREATE TYPE order_status AS ENUM (
   'delivered',
   'cancelled'
 );
-CREATE TYPE payment_operator AS ENUM ('orange_money', 'moov_money');
+CREATE TYPE payment_operator AS ENUM ('orange_money', 'moov_money', 'coris_money', 'wave');
 CREATE TYPE payment_status AS ENUM ('pending', 'validated', 'rejected');
 CREATE TYPE promotion_visibility AS ENUM ('home', 'category');
 CREATE TYPE promotion_status AS ENUM ('active', 'expired', 'paused');
@@ -97,6 +97,8 @@ CREATE TABLE IF NOT EXISTS shops (
   social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
   orange_money_number TEXT,
   moov_money_number TEXT,
+  coris_money_number TEXT,
+  wave_number TEXT,
   status shop_status NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -123,8 +125,18 @@ CREATE TABLE IF NOT EXISTS product_images (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   image_url TEXT NOT NULL,
-  position INT NOT NULL DEFAULT 0
+  image_code TEXT,
+  storage_path TEXT,
+  mime_type TEXT,
+  size_bytes BIGINT CHECK (size_bytes IS NULL OR size_bytes >= 0),
+  position INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_images_image_code
+  ON product_images(image_code) WHERE image_code IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_images_storage_path
+  ON product_images(storage_path) WHERE storage_path IS NOT NULL;
 
 -- 5b. product_videos — vidéos produit (upload natif ou lien externe TikTok/YouTube/Snapchat)
 -- ============================================================
@@ -180,7 +192,8 @@ CREATE TABLE IF NOT EXISTS order_items (
   order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   quantity INT NOT NULL CHECK (quantity > 0),
-  unit_price INT NOT NULL CHECK (unit_price >= 0)
+  unit_price INT NOT NULL CHECK (unit_price >= 0),
+  variant_info JSONB
 );
 
 -- ============================================================
@@ -271,6 +284,11 @@ CREATE TABLE IF NOT EXISTS messages (
   sender_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   content TEXT,
   image_url TEXT,
+  audio_url TEXT,
+  audio_duration INTEGER,
+  video_url TEXT,
+  video_duration INTEGER,
+  video_thumbnail TEXT,
   read BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

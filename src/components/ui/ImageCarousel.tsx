@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View, ScrollView, Pressable } from 'react-native';
-import { Image } from 'expo-image';
 import { colors, radius, spacing } from '@/theme';
+import { AdaptiveImage } from './AdaptiveImage';
 
 interface ImageCarouselProps {
   images: string[];
@@ -40,9 +40,10 @@ export function ImageCarousel({
       >
         {images.map((uri, i) => (
           <Pressable key={i} style={{ width: '100%' }}>
-            <Image
-              source={{ uri }}
+            <AdaptiveImage
+              uri={uri}
               style={[styles.image, { height, borderRadius }]}
+              role="gallery"
               contentFit="cover"
               transition={150}
             />

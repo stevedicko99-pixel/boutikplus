@@ -8,11 +8,13 @@ import {
   Text,
   TextInput,
   View,
+  Dimensions,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { AdaptiveImage } from '@/components/ui/AdaptiveImage';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, radius, shadows } from '@/theme';
 import { getShop, getProductsByShop, getShopReviews } from '@/lib/dataService';
@@ -47,6 +49,7 @@ const DAY_LABELS: Record<DayKey, string> = {
 };
 const DAY_ORDER: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const PAGE_SIZE = 24;
+const isNarrow = Dimensions.get('window').width < 360;
 
 function getDayKey(date = new Date()): DayKey {
   return (['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as DayKey[])[date.getDay()];
@@ -97,6 +100,7 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'recent' | 'price_asc' | 'price_desc'>('recent');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [contentWidth, setContentWidth] = useState(0);
 
   useDocumentTitle(shop ? `${shop.name} — Boutikplus` : 'Boutique — Boutikplus');
 
@@ -118,19 +122,27 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
     }
   }, [shopId]);
 
-  useEffect(() => { void loadShop(); }, [loadShop]);
+  useEffect(() => {
+    void loadShop();
+  }, [loadShop]);
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search, sort]);
 
-  const isNarrow = width < 360;
-  const isTablet = width >= 700;
-  const isDesktop = width >= 1100;
-  const columns = isDesktop ? 4 : isTablet ? 3 : isNarrow ? 1 : 2;
-  const sidePadding = isNarrow ? spacing.md : isDesktop ? spacing.xxxl : spacing.lg;
-  const contentWidth = Math.min(width, 1200);
-  const gridWidth = contentWidth - sidePadding * 2;
-  const gap = isNarrow ? spacing.sm : spacing.md;
-  const cardWidth = (gridWidth - gap * (columns - 1)) / columns;
-  const heroHeight = isDesktop ? Math.min(600, height * 0.7) : isTablet ? 500 : isNarrow ? 430 : 470;
+  // Use window width directly for column calculation (more reliable on mobile web)
+  const effectiveWidth = width;
+  // Shopify Mobile style: 1 column on mobile, 2 on tablet, 3 on desktop
+  const columns = effectiveWidth < 600 ? 1 : effectiveWidth < 1024 ? 2 : 3;
+  const sidePadding = effectiveWidth < 600 ? 16 : effectiveWidth < 1024 ? 24 : 32;
+  const gap = effectiveWidth < 600 ? 16 : 20;
+  const availableWidth = Math.max(0, effectiveWidth - sidePadding * 2);
+  const cardWidth = Math.max(0, (availableWidth - gap * (columns - 1)) / columns);
+  const isNarrow = effectiveWidth < 360;
+  const isTablet = effectiveWidth >= 600;
+  const isDesktop = effectiveWidth >= 1024;
+  const handleContentLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.round(event.nativeEvent.layout.width);
+    setContentWidth((current) => current === nextWidth ? current : nextWidth);
+  }, []);
+  const heroHeight = isDesktop ? Math.min(600, height * 0.7) : isTablet ? 420 : isNarrow ? 280 : 340;
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -148,7 +160,7 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
       <SafeAreaView style={styles.container} edges={['top']}>
         <ScrollView accessibilityLabel="Chargement de la boutique" contentContainerStyle={styles.loadingContent}>
           <Skeleton width="100%" height={isNarrow ? 300 : 380} borderRadius={0} />
-          <View style={[styles.content, { paddingHorizontal: sidePadding }]}>
+          <View style={[styles.content, { paddingHorizontal: sidePadding }]} onLayout={handleContentLayout}>
             <Skeleton width="55%" height={30} />
             <Skeleton width="80%" height={14} style={styles.skeletonLine} />
             <Skeleton width="100%" height={52} borderRadius={radius.sm} style={styles.skeletonBlock} />
@@ -214,13 +226,13 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, spacing.xl) }}>
         <View style={[styles.hero, { height: heroHeight }]}>
           {shop.banner_url || shop.logo_url ? (
-            <Image
-              source={{ uri: shop.banner_url || shop.logo_url || undefined }}
+            <AdaptiveImage
+              uri={shop.banner_url || shop.logo_url || ''}
+              role="hero"
+              displayWidth={width}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
-              contentPosition="center"
-              cachePolicy="memory-disk"
-              transition={250}
+              recyclingKey={`${shop.id}-hero`}
               accessibilityLabel={`Photo de couverture de ${shop.name}`}
             />
           ) : <View style={[StyleSheet.absoluteFill, styles.heroFallback]} />}
@@ -233,17 +245,54 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
             </View>
           </View>
           <View style={[styles.heroCopy, { paddingHorizontal: sidePadding, maxWidth: isDesktop ? 760 : 620 }]}>
-            <Text style={styles.eyebrow}>{getCategoryName(shop.category_id)} · {shop.city}</Text>
+            <View style={styles.eyebrowRow}>
+              <View style={styles.eyebrowDot} />
+              <Text style={styles.eyebrow}>{getCategoryName(shop.category_id)} · {shop.city}</Text>
+            </View>
             <Text accessibilityRole="header" style={[styles.shopName, isNarrow && styles.shopNameNarrow]}>{shop.name}</Text>
             {shop.slogan ? <Text style={styles.slogan}>{shop.slogan}</Text> : null}
             <View style={styles.heroMeta}>
-              <Text style={styles.heroMetaText}>{openStatus.label}</Text>
+              <View style={styles.heroMetaChip}>
+                <View style={[styles.statusDot, { backgroundColor: openStatus.open ? colors.success : colors.textInverse }]} />
+                <Text style={styles.heroMetaText}>{openStatus.label}</Text>
+              </View>
+              {shop.is_verified ? (
+                <View style={styles.verifiedChip}>
+                  <Feather name="shield" size={13} color={colors.goldLight} />
+                  <Text style={styles.verifiedChipText}>Boutique vérifiée</Text>
+                </View>
+              ) : null}
               {avgRating > 0 ? <Rating value={avgRating} count={reviews.length} size={15} inverse /> : null}
+            </View>
+          </View>
+          <View style={[styles.heroGlassCard, { marginHorizontal: sidePadding }]}>
+            <View style={styles.glassItem}>
+              <Feather name="package" size={18} color={colors.primaryDeep} />
+              <View style={styles.glassItemText}>
+                <Text style={styles.glassItemValue}>{products.length}</Text>
+                <Text style={styles.glassItemLabel}>Produits</Text>
+              </View>
+            </View>
+            <View style={styles.glassDivider} />
+            <View style={styles.glassItem}>
+              <Feather name="star" size={18} color={colors.primaryDeep} />
+              <View style={styles.glassItemText}>
+                <Text style={styles.glassItemValue}>{reviews.length ? avgRating.toFixed(1) : '—'}</Text>
+                <Text style={styles.glassItemLabel}>Note</Text>
+              </View>
+            </View>
+            <View style={styles.glassDivider} />
+            <View style={styles.glassItem}>
+              <Feather name="message-circle" size={18} color={colors.primaryDeep} />
+              <View style={styles.glassItemText}>
+                <Text style={styles.glassItemValue}>{reviews.length}</Text>
+                <Text style={styles.glassItemLabel}>Avis</Text>
+              </View>
             </View>
           </View>
         </View>
 
-        <View style={[styles.content, { paddingHorizontal: sidePadding }]}>
+        <View style={[styles.content, { paddingHorizontal: sidePadding }]} onLayout={handleContentLayout}>
           <View style={[styles.primaryCta, isTablet && styles.primaryCtaWide]}>
             <Button
               label={primaryLabel}
@@ -298,7 +347,7 @@ export function ShopDetailScreen({ navigation, route }: ShopDetailScreenProps) {
                 <View style={[styles.productGrid, { gap }]}>
                   {visibleProducts.map((product) => (
                     <View key={product.id} style={{ width: cardWidth, marginBottom: spacing.sm }}>
-                      <ProductCard product={product} onPress={() => navigation.navigate('ProductDetail', { productId: product.id })} compact />
+                      <ProductCard product={product} onPress={() => navigation.navigate('ProductDetail', { productId: product.id })} compact={columns > 1} />
                     </View>
                   ))}
                 </View>
@@ -471,16 +520,35 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', gap: spacing.sm },
   iconControl: { width: 48, height: 48, borderRadius: radius.circle, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,16,22,0.42)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
   controlPressed: { opacity: 0.7 },
-  heroCopy: { width: '100%', paddingBottom: spacing.huge, alignSelf: 'center' },
-  eyebrow: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textInverse, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: spacing.md },
-  shopName: { fontFamily: typography.fontFamily, fontSize: 48, lineHeight: 56, fontWeight: typography.weights.bold, color: colors.textInverse, letterSpacing: -1.4 },
-  shopNameNarrow: { fontSize: 36, lineHeight: 42 },
+heroCopy: { width: '100%', paddingBottom: spacing.xl, alignSelf: 'center' },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
+  eyebrowDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.goldLight },
+  eyebrow: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textInverse, textTransform: 'uppercase', letterSpacing: 1.2 },
+  shopName: { fontFamily: typography.fontFamily, fontSize: isNarrow ? 28 : 48, lineHeight: isNarrow ? 34 : 56, fontWeight: typography.weights.bold, color: colors.textInverse, letterSpacing: -1.4 },
+  shopNameNarrow: { fontSize: 28, lineHeight: 34 },
   slogan: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, lineHeight: 26, color: 'rgba(255,255,255,0.88)', marginTop: spacing.sm, maxWidth: 620 },
-  heroMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.lg, marginTop: spacing.xl },
+  heroMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md, marginTop: spacing.xl },
+  heroMetaChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.16)', paddingVertical: 6, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)' },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
   heroMetaText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.textInverse },
-  primaryCta: { gap: spacing.sm, paddingTop: spacing.xxl, paddingBottom: spacing.huge, borderBottomWidth: 1, borderBottomColor: colors.border },
+  verifiedChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(201,154,60,0.22)', paddingVertical: 6, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(230,200,120,0.5)' },
+  verifiedChipText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.goldLight },
+  heroGlassCard: {
+    flexDirection: 'row', alignItems: 'stretch', alignSelf: 'center', maxWidth: 1200,
+    backgroundColor: colors.glassStrong,
+    borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl,
+    borderWidth: 1, borderColor: colors.glassBorder,
+    paddingVertical: spacing.md,
+    ...shadows.fani,
+  },
+  glassItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm },
+  glassItemText: { alignItems: 'flex-start' },
+  glassItemValue: { fontFamily: typography.fontFamily, fontSize: typography.sizes.title, fontWeight: typography.weights.extrabold, color: colors.ink, lineHeight: 24 },
+  glassItemLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
+  glassDivider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.border, alignSelf: 'stretch', marginVertical: spacing.xs },
+  primaryCta: { gap: spacing.sm, paddingTop: isNarrow ? spacing.lg : spacing.xxl, paddingBottom: isNarrow ? spacing.xl : spacing.huge, borderBottomWidth: 1, borderBottomColor: colors.border },
   primaryCtaWide: { flexDirection: 'row', alignItems: 'center' },
-  sectionHeader: { marginTop: spacing.massive, marginBottom: spacing.xl, maxWidth: 680 },
+  sectionHeader: { marginTop: isNarrow ? spacing.xxl : spacing.massive, marginBottom: isNarrow ? spacing.lg : spacing.xl, maxWidth: 680 },
   sectionTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, lineHeight: 31, fontWeight: typography.weights.bold, color: colors.ink, letterSpacing: -0.5 },
   sectionSubtitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, lineHeight: 23, color: colors.textMuted, marginTop: spacing.sm },
   catalogControls: { gap: spacing.md, marginBottom: spacing.xl },
@@ -527,7 +595,7 @@ const styles = StyleSheet.create({
   reviewName: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.text },
   reviewDate: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginTop: 2 },
   reviewComment: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, lineHeight: 24, color: colors.text, marginTop: spacing.lg },
-  footer: { marginTop: spacing.massive, paddingVertical: spacing.xxl, borderTopWidth: 1, borderTopColor: colors.border },
+  footer: { marginTop: isNarrow ? spacing.xxl : spacing.massive, paddingVertical: spacing.xxl, borderTopWidth: 1, borderTopColor: colors.border },
   footerName: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.ink },
   footerText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginTop: spacing.xs },
 });

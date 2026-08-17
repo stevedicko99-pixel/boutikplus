@@ -20,6 +20,7 @@ export const __BTIK_AUTH_STEG__ = '6646256eecd6c1a36d40192effb020cb';
 interface AuthContextValue {
   session: Session | null;
   profile: Profile | null;
+  profileLoadError: string | null;
   loading: boolean;
   // Indicateur : l'app fonctionne-t-elle en fallback déconnectée (fallback offline).
   // Ce flag est déterminé par la configuration Supabase, pas par un utilisateur.
@@ -68,6 +69,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingReturnTo, setPendingReturnTo] = useState<
     { screen: string; params?: any } | null
@@ -84,8 +86,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true;
+    // 🔴 Timeout de sécurité : si Supabase ne répond pas en 6s,
+    // on force la fin du loading pour éviter l'écran blanc infini.
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        logger.warn('[AuthContext] Safety timeout: forcing loading=false');
+        setLoading(false);
+      }
+    }, 6000);
 
     supabase.auth.getSession().then(({ data }) => {
+      clearTimeout(safetyTimer);
       if (!mounted) return;
       setSession(data.session);
       if (data.session) {
@@ -93,6 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Enregistrement token push dès le démarrage si session existe
         registerPushToken(data.session.user.id).catch(() => {});
       } else setLoading(false);
+    }).catch((err) => {
+      clearTimeout(safetyTimer);
+      logger.error('[AuthContext] getSession failed', err);
+      if (mounted) setLoading(false);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
@@ -102,18 +117,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         registerPushToken(sess.user.id).catch(() => {});
       } else {
         setProfile(null);
+        setProfileLoadError(null);
         setLoading(false);
       }
     });
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       sub.subscription.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadProfile = async (userId: string) => {
+    setLoading(true);
+    setProfileLoadError(null);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -121,15 +140,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', userId)
         .single();
 
-      if (error) {
-        logger.error('loadProfile failed', error);
+      if (error || !data) {
+        logger.error('loadProfile failed', error ?? 'Profil vide');
+        setProfile(null);
+        setProfileLoadError('Connexion réussie, mais votre profil n’a pas pu être chargé. Réessayez dans quelques instants.');
+        return;
       }
-      setProfile(data as Profile | null);
+      setProfile(data as Profile);
     } catch (e: unknown) {
       // Network errors, schema mismatch, RLS policy violation etc. ne doivent
       // JAMAIS casser le démarrage (évite écran blanc ou crash Silent).
       logger.error('loadProfile unexpected exception (catch top-level)', e);
       setProfile(null);
+      setProfileLoadError('Connexion réussie, mais votre profil n’a pas pu être chargé. Vérifiez votre connexion puis réessayez.');
     } finally {
       setLoading(false);
     }
@@ -145,21 +168,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: 'Supabase non configuré. Voir le fichier .env' };
     }
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // signInWithPassword retourne déjà la session — pas besoin de refaire
+      // un appel getSession() qui déclencherait un second /token?grant_type=password.
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      // Si la connexion a réussi, enregistrer le token push côté client.
-      // onAuthStateChange fera aussi un appel, mais on double pour réduire la latence.
-      if (!error) {
-        try {
-          const { data: sessData } = await supabase.auth.getSession();
-          if (sessData.session) {
-            registerPushToken(sessData.session.user.id).catch(() => {});
-          }
-        } catch (sessionErr) {
-          logger.error('signIn: getSession post-ok failed', sessionErr);
-        }
+      if (!error && data.session) {
+        // La session est déjà posée par Supabase dans le storage ; onAuthStateChange
+        // se chargera de loadProfile + registerPushToken.
+        registerPushToken(data.session.user.id).catch(() => {});
       }
       return { error: error?.message ?? null };
     } catch (e: unknown) {
@@ -211,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // contourne le RLS) crée ensuite la ligne profiles côté serveur.
     // On NE fait PAS d'insertion client : avec la confirmation email activée,
     // signUp() ne crée pas de session, et l'insertion serait bloquée par RLS.
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: params.email,
       password: params.password,
       options: {
@@ -227,15 +245,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (error) return { error: error.message };
     // Cas où la confirmation email est DÉSACTIVÉE : signUp retourne une session.
-    // Dans ce cas, on enregistre tout de suite le token push.
-    try {
-      const { data: sessData } = await supabase.auth.getSession();
-      if (sessData.session) {
-        registerPushToken(sessData.session.user.id).catch(() => {});
-      }
-    } catch (sessionErr) {
-      // Échec getSession ne doit PAS casser l'inscription utilisateur.
-      logger.error('signUp: getSession post-ok failed', sessionErr);
+    // On évite un second appel /token?grant_type=password — onAuthStateChange chargera le profil.
+    if (data.session) {
+      registerPushToken(data.session.user.id).catch(() => {});
     }
     // Le profil est créé automatiquement par le trigger handle_new_user.
     return { error: null };
@@ -266,6 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await unregisterPushToken(session.user.id).catch(() => {});
     }
     setProfile(null);
+    setProfileLoadError(null);
     if (isSupabaseConfigured) await supabase.auth.signOut();
   };
 
@@ -274,6 +287,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         session,
         profile,
+        profileLoadError,
         loading,
         isDemoMode,
         signIn,

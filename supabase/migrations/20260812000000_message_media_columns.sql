@@ -1,0 +1,6 @@
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS audio_url TEXT,
+  ADD COLUMN IF NOT EXISTS audio_duration INTEGER,
+  ADD COLUMN IF NOT EXISTS video_url TEXT,
+  ADD COLUMN IF NOT EXISTS video_duration INTEGER,
+  ADD COLUMN IF NOT EXISTS video_thumbnail TEXT;

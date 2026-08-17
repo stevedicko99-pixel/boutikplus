@@ -15,11 +15,13 @@ import { colors } from '@/theme';
 import { StyleSheet } from 'react-native';
 import { useEffect } from 'react';
 import { setupForegroundNotificationHandler } from '@/lib/pushNotificationService';
+import { registerServiceWorker } from '@/lib/registerServiceWorker';
 
 export default function App() {
   // Configure le handler de notifications push au premier-plan.
   // Sans ça, les notifications ne s'affichent pas tant que l'app est ouverte.
   useEffect(() => setupForegroundNotificationHandler(), []);
+  useEffect(() => registerServiceWorker(), []);
 
   return (
     <GestureHandlerRootView style={styles.root}>

@@ -1,21 +1,25 @@
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { BottomTabBar } from '@/components/navigation/BottomTabBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, View } from 'react-native';
-import { colors, spacing } from '@/theme';
-import { LoginScreen } from '@/screens/auth/LoginScreen';
-import { RegisterScreen } from '@/screens/auth/RegisterScreen';
+import { colors } from '@/theme';
+
+/* Tous les écrans en import synchrone — requis pour que le deep-linking web
+   fonctionne (React.lazy cassait l'accès direct à /login par URL). */
 import { HomeScreen } from '@/screens/home/HomeScreen';
 import { SearchScreen } from '@/screens/home/SearchScreen';
+import { CartScreen } from '@/screens/cart/CartScreen';
+import { ConversationListScreen } from '@/screens/messages/ConversationListScreen';
+import { ProfileScreen } from '@/screens/profile/ProfileScreen';
+import { LoginScreen } from '@/screens/auth/LoginScreen';
+import { RegisterScreen } from '@/screens/auth/RegisterScreen';
 import { ShopDetailScreen } from '@/screens/home/ShopDetailScreen';
 import { ProductDetailScreen } from '@/screens/home/ProductDetailScreen';
-import { CartScreen } from '@/screens/cart/CartScreen';
 import { CheckoutScreen } from '@/screens/cart/CheckoutScreen';
 import { PaymentScreen } from '@/screens/cart/PaymentScreen';
-import { OrderConfirmationScreen } from '@/screens/cart/OrderConfirmationScreen';
-import { ConversationListScreen } from '@/screens/messages/ConversationListScreen';
 import { ChatScreen } from '@/screens/messages/ChatScreen';
-import { ProfileScreen } from '@/screens/profile/ProfileScreen';
+import { OrderConfirmationScreen } from '@/screens/cart/OrderConfirmationScreen';
 import { OrdersScreen } from '@/screens/profile/OrdersScreen';
 import { AddressesScreen } from '@/screens/profile/AddressesScreen';
 import { SettingsScreen } from '@/screens/profile/SettingsScreen';
@@ -52,6 +56,7 @@ import { DriverSearchScreen } from '@/screens/delivery/DriverSearchScreen';
 import { CreateDeliveryScreen } from '@/screens/delivery/CreateDeliveryScreen';
 import { DeliveryPaymentScreen } from '@/screens/delivery/DeliveryPaymentScreen';
 import { DeliveryTrackingScreen } from '@/screens/delivery/DeliveryTrackingScreen';
+import { DeliveryChatScreen } from '@/screens/delivery/DeliveryChatScreen';
 import { SellerDeliveriesScreen } from '@/screens/delivery/SellerDeliveriesScreen';
 import { DriverDashboardScreen } from '@/screens/delivery/DriverDashboardScreen';
 import { DriverRegistrationScreen } from '@/screens/delivery/DriverRegistrationScreen';
@@ -61,6 +66,7 @@ import { PhotoStudioScreen } from '@/screens/seller/PhotoStudioScreen';
 import { ProductVideoPickerScreen } from '@/screens/seller/ProductVideoPickerScreen';
 import { TermsScreen } from '@/screens/legal/TermsScreen';
 import { PrivacyScreen } from '@/screens/legal/PrivacyScreen';
+
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AspectRatio } from '@/lib/photoStudio';
 import type { PaymentOperatorId } from '@/types/models';
@@ -141,10 +147,7 @@ const Stack = createNativeStackNavigator<AppStackParamList>();
 
 // --- Wrapper : écran principal avec barre de navigation inférieure ---
 function withTabBar<K extends keyof AppStackParamList>(
-  // Les écrans tab définissent leur propre type `navigation` (sous-ensemble de NavProp,
-  // ex. { navigate, goBack }). On accepte un ComponentType large pour éviter une
-  // inadéquation de surcharges navigate(route, params) entre NavProp et les props écran.
-  Screen: React.ComponentType<any>,
+  ScreenComponent: React.ComponentType<any>,
   routeName: K,
 ) {
   return function Wrapped(props: { navigation: NavProp; route: any }) {
@@ -152,7 +155,7 @@ function withTabBar<K extends keyof AppStackParamList>(
     return (
       <View style={styles.tabScreen}>
         <View style={{ flex: 1 }}>
-          <Screen {...props} />
+          <ScreenComponent {...props} />
         </View>
         <BottomTabBar navigation={props.navigation} currentRoute={routeName as string} />
         <View style={{ height: 0, backgroundColor: colors.surface }} />
@@ -170,6 +173,7 @@ const ProfileTab = withTabBar(ProfileScreen, 'Profile');
 export function AppNavigator() {
   return (
     <Stack.Navigator
+      initialRouteName="Home"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },
@@ -222,6 +226,7 @@ export function AppNavigator() {
       <Stack.Screen name="CreateDelivery" component={CreateDeliveryScreen} />
       <Stack.Screen name="DeliveryPayment" component={DeliveryPaymentScreen} />
       <Stack.Screen name="DeliveryTracking" component={DeliveryTrackingScreen} />
+      <Stack.Screen name="DeliveryChat" component={DeliveryChatScreen} />
       <Stack.Screen name="SellerDeliveries" component={SellerDeliveriesScreen} />
       <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} />
       <Stack.Screen name="DriverRegistration" component={DriverRegistrationScreen} />
@@ -256,7 +261,5 @@ export function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
-  // L'écran tab a un padding bas pour ne pas être masqué par la BottomTabBar
-  // flottante Pinduoduo (barre surélevée avec ombre, ~72px de haut + safe area).
   tabScreen: { flex: 1, backgroundColor: colors.background },
 });

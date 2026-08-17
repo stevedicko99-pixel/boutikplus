@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getPendingShops, getAllShops, getReports, getProductCount, getUserCount } from '@/lib/dataService';
+import { getAllShops, getReports, getProductCount, getUserCount } from '@/lib/dataService';
 import { PageLoader } from '@/components/ui/PageLoader';
 import { formatRelativeDate } from '@/lib/format';
 import type { Shop } from '@/types/models';
@@ -14,7 +14,6 @@ interface AdminDashboardScreenProps {
 }
 
 export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) {
-  const [pendingShops, setPendingShops] = useState<Shop[]>([]);
   const [allShops, setAllShops] = useState<Shop[]>([]);
   const [recentShops, setRecentShops] = useState<Shop[]>([]);
   const [reports, setReports] = useState<any[]>([]);
@@ -29,14 +28,12 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const [pending, all, r, p, uc] = await Promise.all([
-        getPendingShops(),
+      const [all, r, p, uc] = await Promise.all([
         getAllShops(),
         getReports(),
         getProductCount(),
         getUserCount(),
       ]);
-      setPendingShops(pending);
       setAllShops(all);
       setRecentShops(all.slice(0, 5));
       setReports(r);
@@ -86,27 +83,6 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
           <StatBox icon="users" value={`${userCount}`} label="Utilisateurs" color={colors.success} />
         </View>
 
-        {/* Boutiques à valider (pending uniquement) */}
-        {pendingShops.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionTitle}>En attente de validation</Text>
-              <Pressable onPress={() => navigation.navigate('ShopValidation')}><Text style={styles.seeAll}>Voir tout</Text></Pressable>
-            </View>
-            {pendingShops.slice(0, 3).map((shop) => (
-              <Pressable key={shop.id} style={styles.shopRow} onPress={() => navigation.navigate('ShopValidation')}>
-                <View style={styles.shopLogo}><Feather name="briefcase" size={18} color={colors.warning} /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
-                  <Text style={styles.shopMeta}>{shop.city} · {formatRelativeDate(shop.created_at)}</Text>
-                </View>
-                <View style={[styles.statusBadge, { backgroundColor: colors.warning + '18' }]}><Text style={[styles.statusBadgeText, { color: colors.warning }]}>En attente</Text></View>
-                <Feather name="chevron-right" size={18} color={colors.textMuted} />
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-
         {/* Toutes les boutiques (récentes) */}
         <View style={styles.section}>
           <View style={styles.sectionHead}>
@@ -129,9 +105,9 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
                   <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
                   <Text style={styles.shopMeta}>{shop.city} · {formatRelativeDate(shop.created_at)}</Text>
                 </View>
-                <View style={[styles.statusBadge, shop.status === 'active' ? styles.statusActive : shop.status === 'pending' ? styles.statusPending : styles.statusInactive]}>
-                  <Text style={[styles.statusBadgeText, shop.status === 'active' ? { color: colors.success } : shop.status === 'pending' ? { color: colors.warning } : { color: colors.textMuted }]}>
-                    {shop.status === 'active' ? 'Active' : shop.status === 'pending' ? 'En attente' : shop.status === 'rejected' ? 'Refusée' : 'En pause'}
+                <View style={[styles.statusBadge, shop.status === 'active' ? styles.statusActive : styles.statusInactive]}>
+                  <Text style={[styles.statusBadgeText, { color: shop.status === 'active' ? colors.success : colors.textMuted }]}>
+                    {shop.status === 'active' ? 'Active' : 'En pause'}
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={colors.textMuted} />
@@ -169,7 +145,6 @@ export function AdminDashboardScreen({ navigation }: AdminDashboardScreenProps) 
             <Pressable style={styles.actionCard} onPress={() => navigation.navigate('ShopValidation')}>
               <Feather name="check-square" size={24} color={colors.primary} />
               <Text style={styles.actionText}>Gérer boutiques</Text>
-              {pendingShops.length > 0 ? <View style={styles.actionBadge}><Text style={styles.actionBadgeText}>{pendingShops.length}</Text></View> : null}
             </Pressable>
             <Pressable style={styles.actionCard} onPress={() => navigation.navigate('ProductManagement')}>
               <Feather name="package" size={24} color={colors.secondary} />
@@ -221,7 +196,6 @@ const styles = StyleSheet.create({
   shopMeta: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted },
   statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
   statusActive: { backgroundColor: colors.success + '18' },
-  statusPending: { backgroundColor: colors.warning + '18' },
   statusInactive: { backgroundColor: colors.surfaceAlt },
   statusBadgeText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, fontWeight: typography.weights.semibold },
   reportRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },

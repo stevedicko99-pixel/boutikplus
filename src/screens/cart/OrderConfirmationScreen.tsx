@@ -1,33 +1,77 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
+import { StyleSheet, View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { colors, typography, spacing, radius } from '@/theme';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { colors, typography, spacing } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { PageLoader } from '@/components/ui/PageLoader';
+import { useAuth } from '@/context/AuthContext';
 import { getBuyerOrders } from '@/lib/dataService';
 import { ORDER_TIMELINE, getOrderStatusInfo } from '@/lib/orderStatus';
 import { formatFCFA, formatDateTime } from '@/lib/format';
+import type { AppStackParamList } from '@/navigation/AppNavigator';
 import type { Order } from '@/types/models';
 
 interface OrderConfirmationScreenProps {
-  navigation: { navigate: (screen: string, params?: any) => void; reset: (state: any) => void };
+  navigation: Pick<NativeStackNavigationProp<AppStackParamList>, 'navigate' | 'reset'>;
   route: { params: { orderId: string } };
 }
 
 export function OrderConfirmationScreen({ navigation, route }: OrderConfirmationScreenProps) {
   const { orderId } = route.params;
+  const { profile } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const orders = await getBuyerOrders('demo-buyer');
-      const found = orders.find((o) => o.id === orderId) ?? orders[0];
-      setOrder(found ?? null);
-    })();
-  }, [orderId]);
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setLoadError(null);
+      setOrder(null);
+      if (!profile) {
+        if (active) setLoadError('Votre profil est introuvable.');
+        if (active) setLoading(false);
+        return;
+      }
+      try {
+        const orders = await getBuyerOrders(profile.id);
+        const found = orders.find((item) => item.id === orderId);
+        if (!active) return;
+        if (!found) {
+          setLoadError('Commande introuvable.');
+          return;
+        }
+        setOrder(found);
+      } catch {
+        if (active) setLoadError('Impossible de charger cette commande. Réessayez plus tard.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [orderId, profile]);
 
-  const currentStatus = order?.status ?? 'proof_uploaded';
+  if (loading) {
+    return <SafeAreaView style={styles.container} edges={['top']}><PageLoader /></SafeAreaView>;
+  }
+
+  if (loadError || !order) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorTitle}>Impossible d’afficher la commande</Text>
+          <Text style={styles.errorMessage}>{loadError ?? 'Commande introuvable.'}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const currentStatus = order.status;
   const currentStep = getOrderStatusInfo(currentStatus).step;
 
   return (
@@ -86,7 +130,7 @@ export function OrderConfirmationScreen({ navigation, route }: OrderConfirmation
 
       <View style={styles.bottomBar}>
         <Button label="Suivre mes commandes" variant="outline" onPress={() => navigation.navigate('Orders')} style={{ flex: 1 }} />
-        <Button label="Accueil" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })} style={{ flex: 1, marginLeft: spacing.md }} />
+        <Button label="Accueil" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Home' }] })} style={{ flex: 1, marginLeft: spacing.md }} />
       </View>
     </SafeAreaView>
   );
@@ -94,6 +138,9 @@ export function OrderConfirmationScreen({ navigation, route }: OrderConfirmation
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  errorWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  errorTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, textAlign: 'center', marginBottom: spacing.sm },
+  errorMessage: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, color: colors.textMuted, textAlign: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: 120 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   titleThread: { alignSelf: 'center', marginBottom: spacing.sm },

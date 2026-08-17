@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, ScrollView, Pressable, Platform, Linking, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { colors, typography, spacing, radius } from '@/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, typography, spacing, radius, shadows } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ErrorGuide } from '@/components/ui/ErrorGuide';
@@ -50,6 +51,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   const {
     signIn,
     profile,
+    profileLoadError,
     loading: authLoading,
     switchPrimaryRole,
     pendingReturnTo,
@@ -82,9 +84,14 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   //   (ou immédiatement s'il n'y a qu'un seul rôle).
   const [returnToConsumed, setReturnToConsumed] = useState(false);
   useEffect(() => {
-    if (!justLoggedIn) return;
-    if (authLoading) return;
-    if (!profile) return;
+    if (!justLoggedIn || authLoading) return;
+    if (!profile) {
+      if (profileLoadError) {
+        setError(profileLoadError);
+        setJustLoggedIn(false);
+      }
+      return;
+    }
 
     const roles: UserRole[] = Array.isArray(profile.roles) && profile.roles.length > 0
       ? profile.roles
@@ -101,7 +108,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
       setShowRolePicker(true);
     }
     setJustLoggedIn(false);
-  }, [profile, authLoading, justLoggedIn]);
+  }, [profile, profileLoadError, authLoading, justLoggedIn]);
 
   // Effet séparé pour la redirection returnTo :
   // - profile chargé + juste connecté + role picker fermé + returnTo présent → on navigue.
@@ -182,14 +189,40 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.logoWrap}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>B+</Text>
+        {/* Hero gradient banner — première impression mémorable */}
+        <LinearGradient
+          colors={colors.brandGradientDeep}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroBanner}
+        >
+          <View style={styles.heroContent}>
+            <View style={styles.logoCircle}>
+              <Text style={styles.logoText}>B+</Text>
+            </View>
+            <Text style={styles.appName}>Boutikplus</Text>
+            <Text style={styles.tagline}>La marketplace des jeunes du Faso</Text>
+            <ThreadDivider color={colors.stitch} style={styles.brandThread} />
+            {/* Social proof badge */}
+            <View style={styles.socialProofBadge}>
+              <View style={styles.socialProofDot} />
+              <Text style={styles.socialProofText}>1 vendeur pionnier · Soyez le prochain</Text>
+            </View>
           </View>
-          <Text style={styles.appName}>Boutikplus</Text>
-          <Text style={styles.tagline}>La marketplace des jeunes du Faso</Text>
-          {/* Fil de Faso — couture signature sous la marque */}
-          <ThreadDivider color={colors.stitch} style={styles.brandThread} />
+        </LinearGradient>
+
+        {/* Value props compacts */}
+        <View style={styles.valuePropsRow}>
+          {[
+            { icon: 'camera' as const, label: 'Studio photo' },
+            { icon: 'credit-card' as const, label: 'Paiement local' },
+            { icon: 'truck' as const, label: 'Livraison' },
+          ].map((v, i) => (
+            <View key={i} style={styles.valuePropItem}>
+              <Feather name={v.icon} size={14} color={colors.primary} />
+              <Text style={styles.valuePropLabel}>{v.label}</Text>
+            </View>
+          ))}
         </View>
 
         <View style={styles.form}>
@@ -326,33 +359,79 @@ const ROLE_META: Record<UserRole, { icon: string; label: string; desc: string; c
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { padding: spacing.xl, paddingBottom: spacing.xxxl },
-  logoWrap: { alignItems: 'center', marginTop: spacing.xxxl, marginBottom: spacing.xxxl },
+  scroll: { padding: 0, paddingBottom: spacing.xxxl },
+  /* hero banner */
+  heroBanner: {
+    borderRadius: radius.xxl,
+    margin: spacing.xl,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+    ...shadows.hero,
+  },
+  heroContent: { alignItems: 'center', paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl },
   logoCircle: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.textInverse,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
-  logoText: { fontSize: 30, fontWeight: '800', color: colors.textInverse },
+  logoText: { fontSize: 30, fontWeight: '800', color: colors.primaryDeep },
   appName: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.hero,
     fontWeight: typography.weights.bold,
-    color: colors.text,
+    color: colors.textInverse,
   },
   tagline: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.body,
-    color: colors.textMuted,
+    color: 'rgba(255,255,255,0.9)',
     marginTop: spacing.xs,
   },
   brandThread: { marginTop: spacing.md },
-  form: { marginBottom: spacing.xl },
-  registerLink: { alignItems: 'center', marginTop: spacing.xxl },
+  socialProofBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.pill,
+  },
+  socialProofDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: '#7BE495',
+  },
+  socialProofText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    fontWeight: typography.weights.semibold,
+    color: colors.textInverse,
+  },
+  /* value props row */
+  valuePropsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.xl,
+  },
+  valuePropItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  valuePropLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    fontWeight: typography.weights.semibold,
+    color: colors.textMuted,
+  },
+  form: { paddingHorizontal: spacing.xl, marginBottom: spacing.xl },
+  registerLink: { alignItems: 'center', marginTop: spacing.xxl, paddingHorizontal: spacing.xl },
   registerText: {
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.body,
@@ -365,6 +444,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
+    marginHorizontal: spacing.xl,
     marginTop: spacing.xxl,
     borderWidth: 1,
     borderColor: colors.border,

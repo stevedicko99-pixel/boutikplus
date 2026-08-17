@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback, useRef, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -26,6 +26,29 @@ interface PendingAction {
 }
 
 const ConnectivityContext = createContext<ConnectivityContextValue | undefined>(undefined);
+
+function isNetInfoOnline(state: any): boolean {
+  return state.isConnected !== false && state.isInternetReachable !== false;
+}
+
+function isWeakConnection(state: any): boolean {
+  const details = state.details;
+  if (state.type === 'cellular' && details && typeof details === 'object') {
+    const generation = details.cellularGeneration || details.generation;
+    if (generation === '2g' || generation === '3g' || generation === '2G' || generation === '3G') {
+      return true;
+    }
+  }
+
+  if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+    const connection = (navigator as Navigator & {
+      connection?: { effectiveType?: string; saveData?: boolean };
+    }).connection;
+    return connection?.saveData === true || connection?.effectiveType === 'slow-2g' || connection?.effectiveType === '2g' || connection?.effectiveType === '3g';
+  }
+
+  return false;
+}
 
 export function ConnectivityProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(true);
@@ -136,6 +159,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
 
   const disableLowBandwidth = useCallback(() => {
     setLowBandwidthOverride(false);
+    setIsLowConnection(false);
   }, []);
 
   useEffect(() => {
@@ -166,22 +190,10 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
         unsubscribe = NetInfo.addEventListener((state: any) => {
           if (cancelled) return;
 
-          const connected = typeof state.isConnected === 'boolean' ? state.isConnected : true;
-          setIsOnline(connected);
+          setIsOnline(isNetInfoOnline(state));
 
           if (!lowBandwidthOverride) {
-            let low = false;
-            const details = state.details;
-            if (details && typeof details === 'object') {
-              const type = state.type;
-              if (type === 'cellular') {
-                const gen = (details as any).cellularGeneration || (details as any).generation;
-                if (gen === '2g' || gen === '3g' || gen === '2G' || gen === '3G') {
-                  low = true;
-                }
-              }
-            }
-            setIsLowConnection(low);
+            setIsLowConnection(isWeakConnection(state));
           }
         });
       } catch (listenerErr) {
@@ -191,22 +203,10 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
       try {
         const initial = await NetInfo.fetch();
         if (cancelled) return;
-        const connected = typeof initial.isConnected === 'boolean' ? initial.isConnected : true;
-        setIsOnline(connected);
+        setIsOnline(isNetInfoOnline(initial));
 
         if (!lowBandwidthOverride) {
-          let low = false;
-          const details = initial.details;
-          if (details && typeof details === 'object') {
-            const type = initial.type;
-            if (type === 'cellular') {
-              const gen = (details as any).cellularGeneration || (details as any).generation;
-              if (gen === '2g' || gen === '3g' || gen === '2G' || gen === '3G') {
-                low = true;
-              }
-            }
-          }
-          setIsLowConnection(low);
+          setIsLowConnection(isWeakConnection(initial));
         }
       } catch {
       }

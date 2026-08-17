@@ -103,7 +103,7 @@ export async function getProductReviews(productId: string, userId?: string | nul
       .from('reviews')
       .select(`
         *,
-        user:profiles(id, full_name, avatar_url, is_verified),
+        user:profiles!reviews_user_id_fkey(id, full_name, avatar_url, is_verified),
         review_images(*)
       `)
       .eq('product_id', productId)

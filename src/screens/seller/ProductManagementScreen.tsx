@@ -53,7 +53,7 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
     if (error) {
       Alert.alert('Erreur', `Impossible de supprimer: ${error}`);
     } else {
-      setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      await load();
     }
     setDeleteTarget(null);
   };
@@ -61,9 +61,18 @@ export function ProductManagementScreen({ navigation }: ProductManagementScreenP
   const toggleStock = async (product: ProductWithImages) => {
     const newStatus: ProductStatus = product.status === 'available' ? 'out_of_stock' : 'available';
     setBusyId(product.id);
-    await updateProduct(product.id, { status: newStatus, stock: newStatus === 'available' ? 1 : 0 });
-    setBusyId(null);
-    setProducts((prev) => prev.map((p) => p.id === product.id ? { ...p, status: newStatus, stock: newStatus === 'available' ? 1 : 0 } : p));
+    try {
+      const { error } = await updateProduct(product.id, { status: newStatus, stock: newStatus === 'available' ? 1 : 0 });
+      if (error) {
+        Alert.alert('Erreur', `Impossible de mettre à jour le stock : ${error}`);
+        return;
+      }
+      setProducts((prev) => prev.map((p) => p.id === product.id ? { ...p, status: newStatus, stock: newStatus === 'available' ? 1 : 0 } : p));
+    } catch {
+      Alert.alert('Erreur', 'Impossible de mettre à jour le stock. Réessayez.');
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (

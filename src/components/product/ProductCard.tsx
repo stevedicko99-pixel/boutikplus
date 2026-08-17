@@ -1,7 +1,7 @@
 import { memo } from 'react';
-import { Alert, StyleSheet, View, Text, Pressable } from 'react-native';
-import { Image } from 'expo-image';
+import { Alert, Platform, StyleSheet, View, Text, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { AdaptiveImage } from '@/components/ui/AdaptiveImage';
 import { colors, typography, radius, spacing, shadows } from '@/theme';
 import { formatFCFA } from '@/lib/format';
 import { useFavorites } from '@/context/FavoriteContext';
@@ -12,9 +12,10 @@ interface ProductCardProps {
   product: ProductWithImages;
   onPress: () => void;
   compact?: boolean;
+  homeSingleColumn?: boolean;
 }
 
-function ProductCardComponent({ product, onPress, compact = false }: ProductCardProps) {
+function ProductCardComponent({ product, onPress, compact = false, homeSingleColumn = false }: ProductCardProps) {
   const imageUri = product.images?.[0]?.image_url;
   const isOutOfStock = product.status === 'out_of_stock' || product.stock <= 0;
   const hasVideo = (product.videos?.length ?? 0) > 0;
@@ -35,18 +36,29 @@ function ProductCardComponent({ product, onPress, compact = false }: ProductCard
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${product.name}, ${formatFCFA(product.price)} FCFA${isOutOfStock ? ', rupture de stock' : ''}`}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.card,
+        pressed && styles.cardPressed,
+        Platform.OS === 'web' && styles.cardWeb,
+        homeSingleColumn && styles.homeSingleColumnCard,
+      ]}
     >
-      <View style={styles.imageWrap}>
+      <View style={[styles.imageWrap, homeSingleColumn && styles.homeSingleColumnImageWrap]}>
         {imageUri ? (
-          <Image
-            source={{ uri: imageUri }}
+          <AdaptiveImage
+            uri={imageUri}
+            role="card"
+            displayWidth={360}
             style={styles.image}
             contentFit="cover"
             transition={120}
-            cachePolicy="memory-disk"
             recyclingKey={`${product.id}-thumb`}
             accessibilityLabel={`Photo de ${product.name}`}
+            fallback={(
+              <View style={[styles.image, styles.placeholder]}>
+                <Feather name="image" size={28} color={colors.textMuted} />
+              </View>
+            )}
           />
         ) : (
           <View style={[styles.image, styles.placeholder]}>
@@ -74,10 +86,13 @@ function ProductCardComponent({ product, onPress, compact = false }: ProductCard
           <Feather name="heart" size={18} color={favorited ? colors.danger : colors.textInverse} fill={favorited ? colors.danger : 'rgba(0,0,0,0.12)'} />
         </Pressable>
       </View>
-      <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
-        {!compact && product.shop ? <Text style={styles.shop} numberOfLines={1}>{product.shop.name}</Text> : null}
-        <Text style={styles.price}>{formatFCFA(product.price)} <Text style={styles.currency}>FCFA</Text></Text>
+      <View style={[styles.info, homeSingleColumn && styles.homeSingleColumnInfo]}>
+        <Text style={[styles.name, homeSingleColumn && styles.homeSingleColumnName]} numberOfLines={2}>{product.name}</Text>
+        {!compact && product.shop ? <Text style={[styles.shop, homeSingleColumn && styles.homeSingleColumnShop]} numberOfLines={1}>{product.shop.name}</Text> : null}
+        <View style={styles.priceRow}>
+          <Text style={[styles.price, homeSingleColumn && styles.homeSingleColumnPrice]}>{formatFCFA(product.price)} <Text style={styles.currency}>FCFA</Text></Text>
+          {isOutOfStock ? <Text style={styles.outText}>Hors stock</Text> : null}
+        </View>
       </View>
     </Pressable>
   );
@@ -94,6 +109,7 @@ export const ProductCard = memo(
     prev.product.images?.[0]?.image_url === next.product.images?.[0]?.image_url &&
     (prev.product.videos?.length ?? 0) === (next.product.videos?.length ?? 0) &&
     prev.compact === next.compact &&
+    prev.homeSingleColumn === next.homeSingleColumn &&
     prev.onPress === next.onPress,
 );
 
@@ -109,8 +125,11 @@ const styles = StyleSheet.create({
     ...shadows.fani,
   },
   cardPressed: { opacity: 0.92 },
+  cardWeb: { transitionDuration: '240ms', transitionProperty: 'transform, box-shadow' },
   cardFocused: { borderColor: colors.stitchDeep, borderWidth: 2 },
+  homeSingleColumnCard: { width: '100%' },
   imageWrap: { position: 'relative', width: '100%', aspectRatio: 4 / 5, backgroundColor: colors.surfaceAlt },
+  homeSingleColumnImageWrap: { aspectRatio: 16 / 10 },
   image: { width: '100%', height: '100%', backgroundColor: colors.surfaceAlt },
   placeholder: { alignItems: 'center', justifyContent: 'center' },
   stockBadge: { position: 'absolute', top: spacing.sm, left: spacing.sm, backgroundColor: colors.ink, paddingVertical: 4, paddingHorizontal: spacing.sm, borderRadius: radius.pill },
@@ -121,8 +140,14 @@ const styles = StyleSheet.create({
   controlPressed: { opacity: 0.72 },
   controlFocused: { borderColor: colors.stitch, borderWidth: 2 },
   info: { padding: spacing.md, minHeight: 104 },
+  homeSingleColumnInfo: { padding: spacing.lg, minHeight: 124 },
   name: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.semibold, color: colors.ink, marginBottom: 3, lineHeight: 19 },
+  homeSingleColumnName: { fontSize: typography.sizes.body, lineHeight: 23, marginBottom: spacing.xs },
   shop: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginBottom: spacing.xs },
-  price: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.extrabold, color: colors.primaryDeep, letterSpacing: typography.letterSpacings.tight, marginTop: 'auto' },
+  homeSingleColumnShop: { fontSize: typography.sizes.small, marginBottom: spacing.sm },
+  priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs, marginTop: 'auto' },
+  price: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.extrabold, color: colors.primaryDeep, letterSpacing: typography.letterSpacings.tight },
+  homeSingleColumnPrice: { fontSize: typography.sizes.subtitle },
   currency: { fontSize: typography.sizes.caption, letterSpacing: typography.letterSpacings.wide },
+  outText: { fontFamily: typography.fontFamily, fontSize: 10, fontWeight: typography.weights.semibold, color: colors.danger },
 });

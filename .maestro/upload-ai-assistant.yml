@@ -1,0 +1,92 @@
+# ============================================================
+# Flow E2E Maestro — Parcours Upload Assistant IA
+#
+# Valide le pipeline complet corrigé :
+#   Connexion → AddEditProduct → Assistant IA → Photo → Upload Supabase
+#   → Génération IA → Apply → Vérif image dans le formulaire produit
+#
+# Prérequis :
+#   - APK installé (eas build --profile preview)
+#   - Compte vendeur de test : +226 70 00 00 00 / Test1234!
+#   - Boutique déjà créée pour ce compte
+#
+# Lancement :
+#   maestro test .maestro/upload-ai-assistant.yml
+# ============================================================
+
+appId: com.boutikplus.app
+---
+# 1. Lancement de l'app
+- launchApp:
+    clearState: false
+
+# 2. Connexion vendeur (si écran Login affiché)
+- runFlow:
+    when:
+      visible: "Se connecter"
+    commands:
+      - tapOn: "Se connecter"
+      - tapOn:
+          id: "phone-input"
+      - inputText: "+22670000000"
+      - tapOn:
+          id: "password-input"
+      - inputText: "Test1234!"
+      - tapOn: "Connexion"
+
+# 3. Navigation vers le tableau de bord vendeur
+- tapOn: "Profil"
+- tapOn: "Espace vendeur"
+
+# 4. Ajout d'un nouveau produit
+- tapOn: "Ajouter produit"
+
+# 5. Ouverture de l'Assistant IA
+- tapOn: "Utiliser l'IA pour générer description et prix"
+
+# 6. Vérif écran photo affiché
+- assertVisible: "Prenez une photo de votre produit"
+
+# 7. Sélection galerie (évite la caméra en CI)
+- tapOn: "Choisir dans la galerie"
+
+# 8. Vérif phase upload visible (barre de progression)
+- extendedWaitUntil:
+    visible: "Téléversement de votre photo"
+    timeout: 10000
+
+# 9. Vérif transition vers génération IA
+- extendedWaitUntil:
+    visible: "L'IA analyse votre photo"
+    timeout: 30000
+
+# 10. Vérif badge "Photo téléversée" (preuve que l'upload Supabase a réussi)
+- assertVisible: "Photo téléversée"
+
+# 11. Vérif résultat IA affiché
+- extendedWaitUntil:
+    visible: "Suggestions générées"
+    timeout: 60000
+
+# 12. Vérif qu'une photo est visible dans le résultat (previewSmall)
+- assertVisible:
+    id: "expo-image"
+
+# 13. Application du résultat au formulaire produit
+- tapOn: "Appliquer à mon produit"
+
+# 14. Vérif retour au formulaire AddEditProduct avec Alert de confirmation
+- assertVisible: "Suggestions appliquées au produit"
+- tapOn: "OK"
+
+# 15. Vérif que le titre du produit est pré-rempli (preuve transfert IA → formulaire)
+- assertVisible:
+    id: "product-name-input"
+
+# 16. Vérif qu'une image est présente dans la galerie du produit
+#     (preuve que l'URL Supabase a bien été transmise via aiResultHolder)
+- assertVisible:
+    id: "expo-image"
+
+# 17. Capture finale pour audit
+- takeScreenshot: upload-ai-pipeline-success

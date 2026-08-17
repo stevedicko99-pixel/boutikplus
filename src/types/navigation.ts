@@ -15,7 +15,7 @@ export type HomeStackParamList = {
   ProductDetail: { productId: string };
   Cart: undefined;
   Checkout: undefined;
-  Payment: { orderId: string };
+  Payment: { orderId: string; amount?: number; operator?: import('@/constants/payment').PaymentOperatorId; shopId?: string };
   OrderConfirmation: { orderId: string };
   ConversationList: undefined;
   Chat: { conversationId: string; shopId?: string; productId?: string };

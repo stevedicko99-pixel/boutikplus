@@ -456,8 +456,8 @@ BEGIN RETURN QUERY SELECT
   COALESCE(SUM(CASE WHEN rating=4 THEN 1 ELSE 0 END)::BIGINT,0),
   COALESCE(SUM(CASE WHEN rating=5 THEN 1 ELSE 0 END)::BIGINT,0)
 FROM public.reviews WHERE product_id = p_product_id; END; $$;
-REVOKE EXECUTE ON FUNCTION public.get_product_review_stats(UUID) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.get_product_review_stats(UUID) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.get_product_review_stats(UUID) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.get_product_review_stats(UUID) TO anon, authenticated;
 
 -- 11c. notify_user(p_user_id, p_type, p_title, p_body, p_data)
 CREATE OR REPLACE FUNCTION public.notify_user(p_user_id UUID, p_type TEXT, p_title TEXT, p_body TEXT, p_data JSONB DEFAULT NULL)
@@ -483,31 +483,349 @@ REVOKE EXECUTE ON FUNCTION public.toggle_favorite(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.toggle_favorite(UUID) TO authenticated;
 
 -- ============================================================
--- 12. set_product_images(p_product_id, p_image_urls)
---    Synchronise transactionnellement les images d'un produit.
---    Supprime les anciennes images puis insère les nouvelles URLs
---    avec leur position. Appelée par updateProduct côté client.
+-- 12. set_product_images(p_product_id, p_images)
+--    Synchronise transactionnellement les images et métadonnées
+--    d'un produit, dans la limite de dix images.
 -- ============================================================
+DROP FUNCTION IF EXISTS public.set_product_images(UUID, TEXT[]);
+
 CREATE OR REPLACE FUNCTION public.set_product_images(
   p_product_id UUID,
-  p_image_urls TEXT[]
+  p_images JSONB
 )
 RETURNS VOID
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
-  -- Supprime les anciennes images du produit
+  IF auth.uid() IS NULL OR NOT EXISTS (
+    SELECT 1
+    FROM public.products p
+    JOIN public.shops s ON s.id = p.shop_id
+    WHERE p.id = p_product_id AND s.owner_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Modification non autorisée du produit %', p_product_id;
+  END IF;
+
+  IF p_images IS NULL OR jsonb_typeof(p_images) <> 'array' OR jsonb_array_length(p_images) > 10 THEN
+    RAISE EXCEPTION 'La liste des images doit contenir au maximum 10 éléments';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_images) image
+    WHERE NULLIF(btrim(image->>'image_url'), '') IS NULL
+      OR image->>'image_url' ~* '^[[:space:]]*(file|content|data|blob):'
+  ) THEN
+    RAISE EXCEPTION 'Une URL distante valide est requise pour chaque image';
+  END IF;
+
   DELETE FROM public.product_images WHERE product_id = p_product_id;
 
-  -- Insère les nouvelles images avec position croissante
-  IF p_image_urls IS NOT NULL AND array_length(p_image_urls, 1) > 0 THEN
-    FOR i IN 1..array_length(p_image_urls, 1) LOOP
-      INSERT INTO public.product_images (product_id, image_url, position)
-      VALUES (p_product_id, p_image_urls[i], i - 1);
-    END LOOP;
-  END IF;
+  INSERT INTO public.product_images (
+    product_id, image_url, image_code, storage_path, mime_type, size_bytes, position
+  )
+  SELECT
+    p_product_id,
+    image->>'image_url',
+    NULLIF(image->>'image_code', ''),
+    NULLIF(image->>'storage_path', ''),
+    NULLIF(image->>'mime_type', ''),
+    CASE WHEN image ? 'size_bytes' AND image->>'size_bytes' <> ''
+      THEN (image->>'size_bytes')::BIGINT ELSE NULL END,
+    ordinality - 1
+  FROM jsonb_array_elements(p_images) WITH ORDINALITY AS items(image, ordinality);
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.set_product_images(UUID, TEXT[]) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.set_product_images(UUID, TEXT[]) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.set_product_images(UUID, JSONB) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_product_images(UUID, JSONB) TO authenticated;
+
+-- ============================================================
+-- 13. submit_payment_proof(p_order_id, p_amount, p_operator,
+--     p_proof_image_url)
+--    Enregistre atomiquement une preuve de paiement de l'acheteur,
+--    met à jour la commande et avertit le vendeur.
+-- ============================================================
+DROP FUNCTION IF EXISTS public.submit_payment_proof(UUID, INT, public.payment_operator, TEXT);
+
+CREATE FUNCTION public.submit_payment_proof(
+  p_order_id UUID,
+  p_amount INT,
+  p_operator payment_operator,
+  p_proof_image_url TEXT
+)
+RETURNS TABLE(payment_id UUID, payment_status public.payment_status, order_status public.order_status)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_payment public.payments%ROWTYPE;
+  v_created BOOLEAN := FALSE;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentification requise'; END IF;
+  IF p_proof_image_url IS NULL OR btrim(p_proof_image_url) = ''
+    OR p_proof_image_url ~* '^[[:space:]]*(file|content|data|blob):' THEN
+    RAISE EXCEPTION 'Une URL distante valide est requise pour la preuve de paiement';
+  END IF;
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+  IF NOT FOUND OR v_order.buyer_id <> auth.uid() THEN
+    RAISE EXCEPTION 'Soumission de preuve non autorisée pour la commande %', p_order_id;
+  END IF;
+  IF p_amount IS DISTINCT FROM v_order.total_amount THEN
+    RAISE EXCEPTION 'Le montant transmis ne correspond pas au montant de la commande';
+  END IF;
+  SELECT * INTO v_payment FROM public.payments WHERE order_id = p_order_id FOR UPDATE;
+  IF FOUND THEN
+    IF v_payment.amount <> v_order.total_amount OR v_payment.operator <> p_operator
+      OR v_payment.proof_image_url <> p_proof_image_url THEN
+      RAISE EXCEPTION 'Une autre preuve de paiement est déjà enregistrée pour cette commande';
+    END IF;
+  ELSE
+    IF v_order.status <> 'pending_payment'::public.order_status THEN
+      RAISE EXCEPTION 'La commande % ne peut pas recevoir de preuve de paiement', p_order_id;
+    END IF;
+    INSERT INTO public.payments(order_id,amount,operator,proof_image_url,status)
+    VALUES(p_order_id,v_order.total_amount,p_operator,p_proof_image_url,'pending') RETURNING * INTO v_payment;
+    v_created := TRUE;
+    UPDATE public.orders SET status = 'proof_uploaded' WHERE id = p_order_id;
+    v_order.status := 'proof_uploaded';
+  END IF;
+  IF v_created THEN
+    INSERT INTO public.notifications(user_id,type,title,body,data)
+    VALUES(v_order.seller_id,'payment_proof_uploaded','Preuve de paiement à vérifier',
+      'Un acheteur a soumis une preuve de paiement pour une commande.',jsonb_build_object('order_id',p_order_id));
+  END IF;
+  RETURN QUERY SELECT v_payment.id, v_payment.status, v_order.status;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.submit_payment_proof(UUID, INT, payment_operator, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.submit_payment_proof(UUID, INT, payment_operator, TEXT) TO authenticated;
+
+-- ============================================================
+-- 14. RPC transactionnelles de gestion des commandes
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.create_order_with_items(
+  p_seller_id UUID,
+  p_total_amount INT,
+  p_address_id UUID,
+  p_note TEXT,
+  p_items JSONB
+)
+RETURNS UUID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_order_id UUID;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentification requise';
+  END IF;
+
+  IF p_items IS NULL
+    OR jsonb_typeof(p_items) <> 'array'
+    OR jsonb_array_length(p_items) = 0 THEN
+    RAISE EXCEPTION 'La commande doit contenir au moins un article';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(p_items) AS item
+    WHERE jsonb_typeof(item) <> 'object'
+  ) THEN
+    RAISE EXCEPTION 'Chaque article de la commande doit être un objet';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_to_recordset(p_items) AS item(product_id TEXT, quantity INT, unit_price INT)
+    WHERE product_id IS NULL
+      OR btrim(product_id) = ''
+      OR quantity IS NULL
+      OR quantity <= 0
+      OR unit_price IS NULL
+      OR unit_price < 0
+  ) THEN
+    RAISE EXCEPTION 'Article de commande invalide';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_to_recordset(p_items) AS item(product_id TEXT, quantity INT, unit_price INT)
+    LEFT JOIN public.products p ON p.id = item.product_id::UUID
+    LEFT JOIN public.shops s ON s.id = p.shop_id
+    WHERE p.id IS NULL OR s.owner_id IS DISTINCT FROM p_seller_id
+  ) THEN
+    RAISE EXCEPTION 'Un ou plusieurs produits ne sont pas associés au vendeur indiqué';
+  END IF;
+
+  IF (
+    SELECT count(DISTINCT p.shop_id)
+    FROM jsonb_to_recordset(p_items) AS item(product_id TEXT)
+    JOIN public.products p ON p.id = item.product_id::UUID
+  ) <> 1 THEN
+    RAISE EXCEPTION 'Tous les produits de la commande doivent appartenir à une seule boutique';
+  END IF;
+
+  INSERT INTO public.orders (
+    buyer_id,
+    seller_id,
+    total_amount,
+    delivery_address_id,
+    note,
+    status
+  )
+  VALUES (
+    auth.uid(),
+    p_seller_id,
+    p_total_amount,
+    p_address_id,
+    p_note,
+    'pending_payment'
+  )
+  RETURNING id INTO v_order_id;
+
+  INSERT INTO public.order_items (order_id, product_id, quantity, unit_price, variant_info)
+  SELECT v_order_id, item.product_id::UUID, item.quantity, item.unit_price, item.variant_info
+  FROM jsonb_to_recordset(p_items) AS item(
+    product_id TEXT,
+    quantity INT,
+    unit_price INT,
+    variant_info JSONB
+  );
+
+  INSERT INTO public.notifications (user_id, type, title, body, data)
+  VALUES (
+    p_seller_id,
+    'new_order',
+    'Nouvelle commande à vérifier',
+    'Une nouvelle commande nécessite votre vérification avant son traitement.',
+    jsonb_build_object('order_id', v_order_id)
+  );
+
+  RETURN v_order_id;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.create_order_with_items(UUID, INT, UUID, TEXT, JSONB) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_order_with_items(UUID, INT, UUID, TEXT, JSONB) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.validate_order_payment(
+  p_order_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_payment public.payments%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentification requise';
+  END IF;
+
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE id = p_order_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR v_order.seller_id <> auth.uid() THEN
+    RAISE EXCEPTION 'Validation de paiement non autorisée pour la commande %', p_order_id;
+  END IF;
+
+  IF v_order.status <> 'proof_uploaded'::public.order_status THEN
+    RAISE EXCEPTION 'La commande % ne peut pas être validée', p_order_id;
+  END IF;
+
+  SELECT * INTO v_payment
+  FROM public.payments
+  WHERE order_id = p_order_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR v_payment.status <> 'pending'::public.payment_status THEN
+    RAISE EXCEPTION 'Aucun paiement à valider pour la commande %', p_order_id;
+  END IF;
+
+  UPDATE public.payments
+  SET status = 'validated'::public.payment_status,
+      validated_at = now()
+  WHERE id = v_payment.id;
+
+  UPDATE public.orders
+  SET status = 'payment_validated'::public.order_status
+  WHERE id = p_order_id;
+
+  INSERT INTO public.notifications (user_id, type, title, body, data)
+  VALUES (
+    v_order.buyer_id,
+    'payment_validated',
+    'Paiement confirmé',
+    'Votre paiement a été confirmé par le vendeur. Votre commande va être préparée.',
+    jsonb_build_object('order_id', p_order_id)
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.validate_order_payment(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.validate_order_payment(UUID) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.reject_order_payment(
+  p_order_id UUID,
+  p_reason TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_payment public.payments%ROWTYPE;
+  v_reason TEXT := COALESCE(NULLIF(btrim(p_reason), ''), 'Preuve de paiement refusée par le vendeur');
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentification requise';
+  END IF;
+
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE id = p_order_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR v_order.seller_id <> auth.uid() THEN
+    RAISE EXCEPTION 'Refus de paiement non autorisé pour la commande %', p_order_id;
+  END IF;
+
+  IF v_order.status <> 'proof_uploaded'::public.order_status THEN
+    RAISE EXCEPTION 'La commande % ne peut pas être refusée', p_order_id;
+  END IF;
+
+  SELECT * INTO v_payment
+  FROM public.payments
+  WHERE order_id = p_order_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR v_payment.status <> 'pending'::public.payment_status THEN
+    RAISE EXCEPTION 'Aucun paiement à refuser pour la commande %', p_order_id;
+  END IF;
+
+  UPDATE public.payments
+  SET status = 'rejected'::public.payment_status,
+      rejection_reason = v_reason
+  WHERE id = v_payment.id;
+
+  UPDATE public.orders
+  SET status = 'cancelled'::public.order_status,
+      cancellation_reason = v_reason
+  WHERE id = p_order_id;
+
+  INSERT INTO public.notifications (user_id, type, title, body, data)
+  VALUES (
+    v_order.buyer_id,
+    'payment_rejected',
+    'Paiement refusé',
+    'Votre preuve de paiement a été refusée par le vendeur et votre commande a été annulée. Motif : ' || v_reason,
+    jsonb_build_object('order_id', p_order_id, 'reason', v_reason)
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.reject_order_payment(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.reject_order_payment(UUID, TEXT) TO authenticated;

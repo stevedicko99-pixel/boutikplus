@@ -4,9 +4,9 @@
 // zoom au tap, transitions fluides.
 
 import { useState, useRef } from 'react';
-import { StyleSheet, View, ScrollView, Text, Pressable, Dimensions, Animated, Platform } from 'react-native';
-import { Image } from 'expo-image';
+import { StyleSheet, View, ScrollView, Text, Pressable, useWindowDimensions, Animated, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { AdaptiveImage } from '@/components/ui/AdaptiveImage';
 import { colors, radius, spacing, typography } from '@/theme';
 import { ProductVideoCard } from './ProductVideoCard';
 import type { ProductVideo } from '@/types/models';
@@ -21,13 +21,12 @@ type MediaItem =
   | { kind: 'image'; uri: string; position: number }
   | { kind: 'video'; video: ProductVideo; position: number };
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
 export function MediaCarousel({
   images,
   videos,
   height = 420,
 }: MediaCarouselProps) {
+  const { width: screenWidth } = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -41,7 +40,7 @@ export function MediaCarousel({
   const goToIndex = (index: number) => {
     if (index < 0 || index >= media.length) return;
     setActiveIndex(index);
-    scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    scrollRef.current?.scrollTo({ x: index * screenWidth, animated: true });
     // Petit effet de fondu lors du changement
     Animated.sequence([
       Animated.timing(fadeAnim, { toValue: 0.7, duration: 100, useNativeDriver: true }),
@@ -81,14 +80,17 @@ export function MediaCarousel({
           {media.map((item, i) => {
             const shouldRender = Math.abs(i - activeIndex) <= 1;
             return (
-              <View key={i} style={{ width: SCREEN_WIDTH, height }}>
+              <View key={i} style={{ width: screenWidth, height }}>
                 {shouldRender ? item.kind === 'image' ? (
-                  <Image
-                    source={{ uri: item.uri }}
+                  <AdaptiveImage
+                    uri={item.uri}
+                    role="gallery"
+                    displayWidth={screenWidth}
                     style={{ width: '100%', height: '100%' }}
                     contentFit="cover"
                     transition={200}
-                    cachePolicy="memory-disk"
+                    recyclingKey={`gallery-${i}`}
+                    accessibilityLabel={`Image ${i + 1} du produit`}
                   />
                 ) : (
                   <View style={styles.videoPage}>
@@ -136,11 +138,15 @@ export function MediaCarousel({
                 ]}
               >
                 {item.kind === 'image' ? (
-                  <Image
-                    source={{ uri: item.uri }}
+                  <AdaptiveImage
+                    uri={item.uri}
+                    role="thumbnail"
+                    displayWidth={68}
                     style={styles.thumbnailImg}
                     contentFit="cover"
                     transition={100}
+                    recyclingKey={`gallery-thumb-${i}`}
+                    accessibilityLabel={`Miniature ${i + 1}`}
                   />
                 ) : (
                   <View style={[styles.thumbnailImg, styles.thumbnailVideo]}>

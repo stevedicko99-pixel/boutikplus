@@ -261,7 +261,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           }}
           style={{ marginTop: spacing.xl, marginBottom: spacing.xl }}
         />
-        <Text style={styles.version}>Boutikplus v1.0.0 · Fait avec ❤️ au Faso</Text>
+        <Text style={styles.version}>Boutikplus v1.3.0 · Fait avec ❤️ au Faso</Text>
       </ScrollView>
     </SafeAreaView>
   );

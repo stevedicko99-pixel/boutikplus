@@ -10,7 +10,13 @@
 //  - le format MIME est image/jpeg
 //  - le chemin est préfixé par userId (conformité RLS)
 // ============================================================
-import { isLocalMediaUri, UploadError, uploadImage } from '@/lib/storage';
+import {
+  isLocalMediaUri,
+  UploadError,
+  uploadImage,
+  uploadMultipleImages,
+  validateFile,
+} from '@/lib/storage';
 
 // --- Mocks Supabase ---
 const mockUpload = jest.fn();
@@ -120,7 +126,7 @@ describe('uploadImage — pipeline Supabase Storage', () => {
 
   it('génère un nom de fichier unique (timestamp + random)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
-    mockUpload.mockResolvedValue({ data: { path: 'u1/img_x.jpg' }, error: null });
+    mockUpload.mockImplementation((path: string) => Promise.resolve({ data: { path }, error: null }));
     mockGetPublicUrl.mockReturnValue({ data: { publicUrl: 'https://x/u1/img_x.jpg' } });
 
     await uploadImage('product-images', 'file://p.jpg', 'prefix');
@@ -128,7 +134,103 @@ describe('uploadImage — pipeline Supabase Storage', () => {
 
     const path1 = mockUpload.mock.calls[0][0];
     const path2 = mockUpload.mock.calls[1][0];
-    // Les deux uploads doivent générer des chemins différents (timestamp + random)
     expect(path1).not.toBe(path2);
+  });
+
+  it('respecte le format produit et random6', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'seller-1' } } });
+    mockUpload.mockImplementation((path: string) => Promise.resolve({ data: { path }, error: null }));
+    mockGetPublicUrl.mockReturnValue({ data: { publicUrl: 'https://x/image.jpg' } });
+
+    const result = await uploadImage('product-images', 'file://p.jpg', 'prod_product-42');
+
+    expect(result?.imageCode).toMatch(/^prod_product-42_\d+_[a-z0-9]{6}$/);
+    expect(result?.path).toBe(`seller-1/${result?.imageCode}.jpg`);
+    expect(result).toEqual(expect.objectContaining({ mimeType: 'image/jpeg', sizeBytes: 5 }));
+  });
+
+  it('réutilise exactement le même chemin pendant un retry transitoire', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
+    mockUpload
+      .mockResolvedValueOnce({ data: null, error: { message: 'network timeout' } })
+      .mockImplementationOnce((path: string) => Promise.resolve({ data: { path }, error: null }));
+    mockGetPublicUrl.mockReturnValue({ data: { publicUrl: 'https://x/image.jpg' } });
+    const progress = jest.fn();
+
+    await uploadImage('payment-proofs', 'file://p.jpg', 'proof_order-1', progress, 20000, { maxRetries: 1 });
+
+    expect(mockUpload).toHaveBeenCalledTimes(2);
+    expect(mockUpload.mock.calls[0][0]).toBe(mockUpload.mock.calls[1][0]);
+    expect(mockUpload.mock.calls[0][2].upsert).toBe(false);
+    expect(mockUpload.mock.calls[1][2].upsert).toBe(true);
+    expect(progress).toHaveBeenCalledTimes(1);
+    expect(progress).toHaveBeenCalledWith(expect.objectContaining({ percent: 100 }));
+  });
+
+  it('conserve l’identité pour un retry manuel après échec', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
+    mockUpload.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+
+    await expect(
+      uploadImage('payment-proofs', 'file://p.jpg', 'proof_order-1', undefined, 20000, { maxRetries: 0 }),
+    ).rejects.toMatchObject({
+      uploadIdentity: {
+        imageCode: expect.stringMatching(/^proof_order-1_\d+_[a-z0-9]{6}$/),
+        path: expect.stringMatching(/^u1\/proof_order-1_\d+_[a-z0-9]{6}\.jpg$/),
+      },
+    });
+  });
+
+  it('valide les formats et la taille maximale de 10 Mo', () => {
+    expect(validateFile({ type: 'image/webp', size: 10 * 1024 * 1024 })).toBeNull();
+    expect(validateFile({ type: 'image/gif' })).toMatchObject({ code: 'UNSUPPORTED_TYPE' });
+    expect(validateFile({ type: 'image/jpeg', size: 10 * 1024 * 1024 + 1 })).toMatchObject({
+      code: 'FILE_TOO_LARGE',
+    });
+  });
+
+  it('borne le batch à trois uploads et conserve l’ordre des résultats', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
+    let active = 0;
+    let maxActive = 0;
+    mockUpload.mockImplementation(async (path: string) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return { data: { path }, error: null };
+    });
+    mockGetPublicUrl.mockImplementation((path: string) => ({ data: { publicUrl: `https://x/${path}` } }));
+
+    const results = await uploadMultipleImages(
+      'product-images',
+      Array.from({ length: 7 }, (_, index) => `file://${index}.jpg`),
+      'prod_p1',
+      3,
+    );
+
+    expect(maxActive).toBe(3);
+    expect(results).toHaveLength(7);
+    results.forEach((result) => expect(result.url).toContain(result.path));
+  });
+
+  it('attend tous les workers avant de rejeter un batch partiellement échoué', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
+    const completed: string[] = [];
+    let uploadNumber = 0;
+    mockUpload.mockImplementation(async (path: string) => {
+      uploadNumber += 1;
+      if (uploadNumber === 2) return { data: null, error: { message: 'permission denied' } };
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      completed.push(path);
+      return { data: { path }, error: null };
+    });
+    mockGetPublicUrl.mockImplementation((path: string) => ({ data: { publicUrl: `https://x/${path}` } }));
+
+    await expect(
+      uploadMultipleImages('product-images', ['file://ok.jpg', 'file://fail.jpg', 'file://last.jpg'], 'prod_p1', 3),
+    ).rejects.toBeInstanceOf(UploadError);
+
+    expect(completed).toHaveLength(2);
   });
 });

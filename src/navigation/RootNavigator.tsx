@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { useEffect, useRef, useState } from 'react';
+import { NavigationContainer, NavigationContainerRef, getStateFromPath, type LinkingOptions } from '@react-navigation/native';
 import { AppNavigator, AppStackParamList } from './AppNavigator';
 import { useAuth } from '@/context/AuthContext';
-import { PageLoader } from '@/components/ui/PageLoader';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { View, StyleSheet, Platform } from 'react-native';
 import { colors } from '@/theme';
 import { PUBLIC_APP_URL } from '@/constants/config';
@@ -13,17 +13,18 @@ import type { UserRole } from '@/types/models';
 // connexion. Format : {PUBLIC_APP_URL}/s/{shopId}  et  .../p/{productId}.
 // Sur mobile, le scheme natif `boutikplus://` est aussi géré (app.json).
 //
-// ⚠️ CORRECTION : les routes publiques (Home, Search, Cart, About, etc.)
-// DOIVENT être déclarées dans `screens` pour que React Navigation résolve
-// l'URL au chargement. Sans ça, /search → currentRoute=undefined →
-// redirect automatique vers Login (bug "deep-link public cassé").
-const linking = {
+// ⚠️ IMPORTANT : linking résout l'URL de manière ASYNCHRONE au premier rendu.
+// Toute redirection (resetRoot) qui dépend de getCurrentRoute() DOIT attendre
+// que NavigationContainer.onReady ait été appelé, sinon currentRoute=undefined
+// et le resetRoot intervient PENDANT que linking pose l'état initial → crash.
+const linking: LinkingOptions<AppStackParamList> = {
   prefixes: [
     PUBLIC_APP_URL,
     'https://boutikplus.vercel.app',
     'boutikplus://',
   ],
   config: {
+    initialRouteName: 'Home' as keyof AppStackParamList,
     // Routes publiques accessibles par URL directe (mode invité).
     // ShopDetail/ProductDetail ont des params ; les autres sont des paths simples.
     screens: {
@@ -39,13 +40,38 @@ const linking = {
       ShopDetail: 's/:shopId',
       ProductDetail: 'p/:productId',
       DeliveryTracking: 'delivery/:deliveryId',
+      Terms: 'terms',
+      Privacy: 'privacy',
+      Wishlist: 'wishlist',
+      ProfileVerification: 'verify-profile',
+      CreateShop: 'create-shop',
+      ShareableShop: 'share/:shopId',
     } as Partial<Record<keyof AppStackParamList, string>>,
+  },
+  // 🛡️ SÉCURITÉ : si un path ne correspond à AUCUN écran (ex: /home, /unknown),
+  // on retourne un état qui pointe vers Home au lieu d'un état vide / undefined
+  // qui ferait planter le resetRoot suivant.
+  getStateFromPath: (path: string, options: any) => {
+    try {
+      const state = getStateFromPath(path, options);
+      if (state && state.routes && state.routes.length > 0) return state;
+    } catch (_err) {
+      // getStateFromPath peut throw sur des paths bizarres ; on fallback
+    }
+    return {
+      index: 0,
+      routes: [{ name: 'Home' as keyof AppStackParamList }],
+    };
   },
 };
 
 export function RootNavigator() {
-  const { profile, loading } = useAuth();
+  const { profile, loading, pendingReturnTo } = useAuth();
   const navRef = useRef<NavigationContainerRef<AppStackParamList>>(null);
+  // 🛡️ CRITICAL : NavigationContainer.onReady indique que linking a terminé
+  // la résolution ASYNCHRONE de l'URL et que getCurrentRoute() est fiable.
+  // Sans ce garde, resetRoot() se lance AVANT linking → état corrompu → crash.
+  const [navReady, setNavReady] = useState(false);
 
   // Garde pour éviter les resetRoot intempestifs (ex: user clique "Accueil" depuis
   // SellerDashboard, navigate('Home') marche, mais le useEffect rerun avec le
@@ -59,7 +85,8 @@ export function RootNavigator() {
   });
 
   useEffect(() => {
-    if (loading || !navRef.current) return;
+    // DOUBLE GARDE : attendre Auth loading ET linking/NavigationContainer prêts
+    if (loading || !navReady || !navRef.current) return;
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     const isAuthenticated = Boolean(profile);
     const uid = profile?.id ?? null;
@@ -69,6 +96,12 @@ export function RootNavigator() {
     // Premier démarrage : placer l'user sur son dashboard selon le rôle
     const firstInit = prev.firstInit;
     lastKnownAuthRef.current = { uid, firstInit: false };
+
+    // Une redirection Checkout est consommée par LoginScreen après le chargement du profil.
+    // Ne pas réinitialiser Login vers un tableau de bord entre-temps.
+    if (isAuthenticated && pendingReturnTo && currentRoute === 'Login') {
+      return;
+    }
 
     // Routes accessibles SANS connexion :
     // - aide/tutoriels
@@ -87,7 +120,23 @@ export function RootNavigator() {
       'Checkout',
       'About',
       'OwnershipVerification',
+      'Terms',
+      'Privacy',
+      'Wishlist',
+      'ShareableShop',
+      'ProfileVerification',
     ];
+
+    // 🛡️ CORRECTION "Partager ma boutique" : préserver les deep-links publics.
+    // Quand on arrive via une URL partagée (ex: /s/{shopId} → ShopDetail, ou
+    // /p/{productId} → ProductDetail), on DOIT rester sur cette page — QUE l'on
+    // soit connecté ou non. Sans ce garde, au premier chargement (firstInit) un
+    // vendeur connecté est redirigé vers son SellerDashboard (privé), et un
+    // visiteur vers Home. Le tableau de bord vendeur reste privé : on ne le
+    // partage jamais. On ne force donc aucun resetRoot ici.
+    if (currentRoute && PUBLIC_ROUTES.includes(currentRoute) && currentRoute !== 'Login' && currentRoute !== 'Register') {
+      return;
+    }
 
     const routeForRole = (p: NonNullable<typeof profile>): keyof AppStackParamList => {
       const role: UserRole = (p.primary_role as UserRole) ?? p.role ?? 'buyer';
@@ -101,22 +150,43 @@ export function RootNavigator() {
       }
     };
 
+    // Helper sûr : resetRoot avec try/catch pour éviter que le nav ne casse
+    const safeResetRoot = (routes: [{ name: keyof AppStackParamList; params?: any }]) => {
+      try {
+        if (!navRef.current) return;
+        if (typeof navRef.current.resetRoot !== 'function') return;
+        navRef.current.resetRoot({ index: 0, routes });
+      } catch (resetErr) {
+        // Si resetRoot échoue (ex: nav en transition), fallback sur navigate
+        const nav: any = navRef.current;
+        try {
+          if (nav && typeof nav.reset === 'function') {
+            nav.reset({ index: 0, routes });
+          }
+        } catch (_e) { /* ignorer — linking a déjà mis un état correct */ }
+      }
+    };
+
     // LOGIN (nouvel user connecté) ou PREMIER DÉMARRAGE connecté → routeur selon rôle.
     // Si l'user vient de Login/Register → forcer aussi la redirection (sinon il reste dessus).
     if (isAuthenticated && (authChanged || firstInit || currentRoute === 'Login' || currentRoute === 'Register' || !currentRoute)) {
       const route = routeForRole(profile!);
-      navRef.current.resetRoot({ index: 0, routes: [{ name: route }] });
+      safeResetRoot([{ name: route }]);
+    } else if (!isAuthenticated && firstInit) {
+      // PREMIER DÉMARRAGE SANS CONNEXION : accueil public (Home) par défaut.
+      // Important : permet d'arriver sur le site sans être redirigé vers Login/CreateShop.
+      safeResetRoot([{ name: 'Home' }]);
     } else if (!isAuthenticated && currentRoute && !PUBLIC_ROUTES.includes(currentRoute)) {
-      navRef.current.resetRoot({ index: 0, routes: [{ name: 'Login' }] });
+      safeResetRoot([{ name: 'Login' }]);
     }
     // Si l'utilisateur est CONNECTÉ et qu'il a volontairement navigué vers Home / ShopDetail /
     // Cart / Search / etc. → ON NE FAIT RIEN. Pas de resetRoot vers son dashboard !
-  }, [profile, loading]);
+  }, [profile, loading, pendingReturnTo, navReady]);
 
   if (loading) {
     return (
       <View style={styles.loading}>
-        <PageLoader size="lg" />
+        <BrandLoader size="lg" fullPage />
       </View>
     );
   }
@@ -124,7 +194,12 @@ export function RootNavigator() {
   return (
     <View style={styles.root}>
       <View style={Platform.OS === 'web' ? styles.webContainer : undefined}>
-        <NavigationContainer ref={navRef as any} linking={linking}>
+        <NavigationContainer
+          ref={navRef as any}
+          linking={linking}
+          onReady={() => setNavReady(true)}
+          fallback={<View style={styles.loading}><BrandLoader size="lg" fullPage /></View>}
+        >
           <AppNavigator />
         </NavigationContainer>
       </View>

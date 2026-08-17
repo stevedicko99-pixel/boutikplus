@@ -82,9 +82,18 @@ export function ShareableShopScreen({ navigation, route }: ShareableShopScreenPr
     ensureShareLink();
   }, [ensureShareLink]);
 
-  // URL publique deep-linkable : ouvre directement la page boutique,
-  // même pour un visiteur non connecté (config linking dans RootNavigator).
-  const shareUrl = activeLink?.target_url ?? shopPublicUrl(shopId);
+  // URL publique deep-linkable : ouvre l'APERÇU PUBLIC de la boutique
+  // (ShopDetailScreen) via https://boutikplus.vercel.app/s/{shopId}, même pour
+  // un visiteur non connecté (config linking dans RootNavigator).
+  //
+  // 🛡️ CORRECTION : on utilise TOUJOURS shopPublicUrl(shopId) et JAMAIS
+  // activeLink.target_url. target_url est basé sur un slug (/s/{slug}) qui ne
+  // correspond pas au routage ShopDetail: 's/:shopId' (qui attend un vrai id),
+  // donc il ne charge pas la boutique. shopPublicUrl(shopId) pointe vers
+  // l'aperçu public de la boutique — et jamais vers le tableau de bord vendeur
+  // (privé). Le activeLink reste utilisé uniquement pour le tracking
+  // (vues/clics/conversions).
+  const shareUrl = shopPublicUrl(shopId);
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(shareUrl);

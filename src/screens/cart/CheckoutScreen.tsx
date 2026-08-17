@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Location from 'expo-location';
-import { StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { Dimensions, StyleSheet, View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
@@ -10,21 +10,32 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { CheckoutStepper } from '@/components/ui/CheckoutStepper';
-import { ThreadDivider } from '@/components/ui/ThreadDivider';
-import { StampBadge } from '@/components/ui/StampBadge';
-import { getAddresses, saveAddress, createOrder, isDemoMode } from '@/lib/dataService';
+import { getAddresses, saveAddress, createOrder, getShop, isDemoMode } from '@/lib/dataService';
 import { validateDiscountCode, redeemDiscountCode } from '@/lib/promotionService';
 import { formatFCFA } from '@/lib/format';
 import { friendlyMessage } from '@/lib/errorMessages';
 import { CITY_LIST, getZoneById, getZonesForCity } from '@/constants/cities';
 import type { DeliveryAddress, DiscountValidationResult } from '@/types/models';
 
+import type { CheckoutStep } from '@/components/ui/CheckoutStepper';
+
 interface CheckoutScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
 }
 
+const screenWidth = Dimensions.get('window').width;
+const isNarrow = screenWidth < 400;
+
 export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
-  const { sellerGroups, total, clear } = useCart();
+  const {
+    selectedSellerGroups,
+    selectedTotal,
+    includeDelivery,
+    setIncludeDelivery,
+    clearSelectedOnly,
+  } = useCart();
+  const activeGroups = selectedSellerGroups;
+  const activeSubtotal = selectedTotal;
   const { profile, setPendingReturnTo } = useAuth();
   // En mode démo, profile est toujours null (pas de Supabase). On utilise un
   // buyer de démonstration pour permettre le parcours complet jusqu'au paiement.
@@ -37,6 +48,10 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
   const emptyAddress = () => ({ city: CITY_LIST[0], zoneId: '', district: '', landmark: '', instructions: '', phone: profile?.phone ?? '', latitude: null as number | null, longitude: null as number | null });
   const [newAddr, setNewAddr] = useState(emptyAddress);
   const [loading, setLoading] = useState(false);
+
+  // ─── Navigation par étapes ──────────────────────────────────────────
+  // Étapes supportées : address → review → payment
+  const [step, setStep] = useState<CheckoutStep>('address');
 
   // Code promo
   const [promoInput, setPromoInput] = useState('');
@@ -118,7 +133,7 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         }
       | null = null;
 
-    for (const group of sellerGroups) {
+    for (const group of activeGroups) {
       const shopId = group.shop?.id;
       if (!shopId) continue;
       const result = await validateDiscountCode({
@@ -155,101 +170,169 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
 
   const discountAmount = appliedPromo?.result.discount_amount ?? 0;
 
+  // ─── Suivant / Retour entre étapes ───────────────────────────────────
+  const handleNext = () => {
+    if (step === 'address') {
+      if (includeDelivery) {
+        if (!selectedAddr) {
+          Alert.alert('Adresse requise', 'Veuillez sélectionner ou ajouter une adresse de livraison');
+          return;
+        }
+      }
+      // Adresse OK (ou livraison désactivée). Passer au récap.
+      setStep('review');
+      return;
+    }
+    if (step === 'review') {
+      // Bouton "Confirmer et payer" sur l'étape review → déclenche handlePlaceOrder
+      handlePlaceOrder();
+    }
+  };
+  const handleBack = () => {
+    if (step === 'review') {
+      setStep('address');
+      return;
+    }
+    navigation.goBack();
+  };
+
   const handlePlaceOrder = async () => {
-    // CAS INVITÉ (mode réel) : connexion obligatoire SEULEMENT au moment de payer.
-    // On conserve le contexte (returnTo=Checkout) puis on redirige.
-    // LoginScreen appellera mergeAnonymousCart() pour garder le panier.
-    // En mode démo, buyerId est toujours défini ('demo-buyer'), on passe donc
-    // directement au paiement.
-    if (!buyerId) {
+    if (activeGroups.length === 0) {
+      Alert.alert('Sélection vide', 'Retournez au panier et sélectionnez les articles à commander.');
+      return;
+    }
+    if (activeGroups.length > 1) {
+      Alert.alert('Une boutique à la fois', 'Veuillez ne commander que dans une boutique à la fois.');
+      return;
+    }
+    // CAS INVITÉ (y compris mode démo) : connexion obligatoire SEULEMENT au moment de payer.
+    // La navigation en mode démo est libre, mais la TRANSACTION exige un vrai compte.
+    if (!profile) {
       setPendingReturnTo({ screen: 'Checkout' });
       navigation.navigate('Login', { returnTo: 'Checkout' });
       return;
     }
-    if (sellerGroups.length === 0) return;
-    if (!selectedAddr) {
+    const realBuyerId = profile.id;
+    void buyerId; // (le buyerId de démo sert uniquement à la navigation, pas à la commande)
+    if (includeDelivery && !selectedAddr) {
       Alert.alert('Adresse requise', 'Veuillez sélectionner ou ajouter une adresse de livraison');
       return;
     }
     setLoading(true);
     const orderIds: string[] = [];
     let redeemedOrderId: string | null = null;
-    for (const group of sellerGroups) {
+    for (const group of activeGroups) {
+      let resolvedShop;
+      try {
+        resolvedShop = group.shop?.owner_id ? group.shop : await getShop(group.shopId);
+      } catch (caughtError) {
+        Alert.alert('Boutique indisponible', friendlyMessage(caughtError instanceof Error ? caughtError.message : String(caughtError)));
+        setLoading(false);
+        return;
+      }
+      if (!resolvedShop?.owner_id) {
+        Alert.alert('Boutique indisponible', 'Impossible d’identifier le propriétaire de cette boutique. Rechargez le panier puis réessayez.');
+        setLoading(false);
+        return;
+      }
+      const sellerId = resolvedShop.owner_id;
       // Applique la réduction sur le sous-total de la boutique concernée
       const groupDiscount =
-        appliedPromo && appliedPromo.sellerId === group.sellerId
+        appliedPromo && appliedPromo.shopId === group.shopId
           ? appliedPromo.result.discount_amount
           : 0;
-      const groupTotal = Math.max(0, group.subtotal - groupDiscount);
-      const { orderId, error } = await createOrder({
-        buyerId: buyerId,
-        sellerId: group.sellerId,
-        items: group.lines.map((l) => ({
-          product_id: l.product.id,
-          quantity: l.quantity,
-          unit_price: l.product.price,
-          variant_info: l.variant_info ?? null,
-        })),
-        totalAmount: groupTotal,
-        addressId: selectedAddr,
-        note: note || null,
-      });
+      const groupDeliveryFee = includeDelivery ? 1000 : 0;
+      const groupTotal = Math.max(0, group.subtotal - groupDiscount + groupDeliveryFee);
+      let orderId: string | null = null;
+      let error: string | null = null;
+      try {
+        ({ orderId, error } = await createOrder({
+          buyerId: realBuyerId,
+          sellerId,
+          items: group.lines.map((l) => ({
+            product_id: l.product.id,
+            quantity: l.quantity,
+            unit_price: l.product.price,
+            variant_info: l.variant_info ?? null,
+          })),
+          totalAmount: groupTotal,
+          addressId: includeDelivery ? selectedAddr : null, // null = retrait en boutique
+          includeDelivery,
+          deliveryFee: groupDeliveryFee,
+          note: note || null,
+        }));
+      } catch (caughtError) {
+        Alert.alert('Erreur', friendlyMessage(caughtError instanceof Error ? caughtError.message : String(caughtError)));
+        setLoading(false);
+        return;
+      }
       if (error) {
         Alert.alert('Erreur', friendlyMessage(error));
         setLoading(false);
         return;
       }
-      if (orderId) {
-        orderIds.push(orderId);
-        if (groupDiscount > 0 && redeemedOrderId === null) {
-          redeemedOrderId = orderId;
-        }
+      if (!orderId) {
+        Alert.alert('Erreur', 'La commande a été créée sans identifiant de paiement. Veuillez réessayer.');
+        setLoading(false);
+        return;
+      }
+      orderIds.push(orderId);
+      if (groupDiscount > 0 && redeemedOrderId === null) {
+        redeemedOrderId = orderId;
       }
     }
 
-    // Consomme le code promo (incrémente le compteur + événement de conversion)
+    // Consomme le code promo
     if (appliedPromo && redeemedOrderId) {
       await redeemDiscountCode({
         code: appliedPromo.result.discount_code!.code,
         shopId: appliedPromo.shopId,
         orderId: redeemedOrderId,
-        buyerId,
+        buyerId: realBuyerId,
         amount: appliedPromo.result.discount_amount,
       }).catch((e) => console.error('redeemDiscountCode:', e));
     }
 
-    clear();
+    // Retire uniquement les articles de cette commande ; la sélection reste
+    // intacte pendant toutes les étapes précédentes du parcours.
+    clearSelectedOnly();
+
     setPendingReturnTo(null); // Consommé
     setLoading(false);
-    // Pour la démo, on va au paiement du premier order
-    // On passe aussi amount + shopId pour que PaymentScreen puisse fonctionner
-    // même si la commande n'est pas encore trouvable (démo / cache).
-    const firstGroup = sellerGroups[0];
+    const firstGroup = activeGroups[0];
+    const firstGroupDiscount =
+      appliedPromo && appliedPromo.shopId === firstGroup.shopId
+        ? appliedPromo.result.discount_amount
+        : 0;
+    const firstGroupDeliv = includeDelivery ? 1000 : 0;
     navigation.navigate('Payment', {
       orderId: orderIds[0],
-      amount: firstGroup ? Math.max(0, firstGroup.subtotal - (appliedPromo && appliedPromo.sellerId === firstGroup.sellerId ? appliedPromo.result.discount_amount : 0)) : undefined,
-      shopId: firstGroup?.shop?.id,
+      amount: firstGroup
+        ? Math.max(0, firstGroup.subtotal - firstGroupDiscount + firstGroupDeliv)
+        : undefined,
+      shopId: firstGroup?.shopId,
     });
   };
 
-  const deliveryFee = sellerGroups.length * 1000;
-  const grandTotal = Math.max(0, total + deliveryFee - discountAmount);
+  const sellerCount = activeGroups.length;
+  const deliveryFee = includeDelivery ? sellerCount * 1000 : 0;
+  const itemCount = activeGroups.reduce((s, g) => s + g.lines.reduce((n, l) => n + l.quantity, 0), 0);
+  const grandTotal = Math.max(0, activeSubtotal + deliveryFee - discountAmount);
+  const invalidSelectionMessage = activeGroups.length === 0
+    ? 'Aucun article sélectionné. Retournez au panier pour choisir les articles à commander.'
+    : activeGroups.length > 1
+      ? 'Votre sélection contient plusieurs boutiques. Retournez au panier et ne conservez qu’une boutique.'
+      : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={navigation.goBack} hitSlop={10}>
-          <Feather name="arrow-left" size={24} color={colors.text} />
+          <Feather name="arrow-left" size={isNarrow ? 22 : 24} color={colors.text} />
         </Pressable>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Commande</Text>
-          <StampBadge label="Commande" color={colors.primaryDeep} size="sm" />
-        </View>
+        <Text style={styles.title}>Commande</Text>
         <View style={{ width: 24 }} />
       </View>
-
-      {/* Fil de Faso — couture signature */}
-      <ThreadDivider color={colors.stitch} style={styles.titleThread} />
 
       {/* Bannière invité friendly : pas besoin de compte pour voir le panier !
           Login demandé SEULEMENT au clic sur "Payer". */}
@@ -277,54 +360,122 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
         </View>
       ) : null}
 
-      {/* Stepper 4 étapes : CheckoutScreen = étapes adresse + récap */}
-      <CheckoutStepper current="address" />
+      {/* Stepper 4 étapes : Panier → Adresse → Récap → Paiement */}
+      <CheckoutStepper
+        current={step}
+        onStepPress={(s) => {
+          if (s === 'cart') navigation.goBack();
+          if (s === 'address') setStep('address');
+        }}
+      />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Adresse de livraison */}
-        <Text style={styles.sectionTitle}>Adresse de livraison</Text>
-        {addresses.map((addr) => (
-          <Pressable
-            key={addr.id}
-            style={[styles.addrCard, selectedAddr === addr.id && styles.addrCardActive]}
-            onPress={() => setSelectedAddr(addr.id)}
-          >
-            <View style={styles.radio}>{selectedAddr === addr.id ? <View style={styles.radioInner} /> : null}</View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.addrCity}>{addr.city} — {addr.district}</Text>
-              {addr.instructions ? <Text style={styles.addrInfo}>{addr.instructions}</Text> : null}
-              <Text style={styles.addrPhone}>{addr.contact_phone}</Text>
-            </View>
-            {addr.is_default ? <View style={styles.defaultTag}><Text style={styles.defaultText}>Par défaut</Text></View> : null}
-          </Pressable>
-        ))}
-
-        {showAddrForm ? (
-          <Card style={styles.addrForm}>
-            <Text style={styles.fieldLabel}>Ville</Text>
-            <ChoiceChips options={CITY_LIST} value={newAddr.city} onChange={(city) => setNewAddr({ ...newAddr, city, zoneId: '' })} />
-            <Text style={styles.fieldLabel}>Zone *</Text>
-            <ChoiceChips options={getZonesForCity(newAddr.city).map((zone) => ({ id: zone.id, label: zone.name }))} value={newAddr.zoneId} onChange={(zoneId) => setNewAddr({ ...newAddr, zoneId })} />
-            <Input label="Repère *" value={newAddr.landmark} onChangeText={(v) => setNewAddr({ ...newAddr, landmark: v })} placeholder="Ex: portail bleu près de la pharmacie" icon="map-pin" />
-            <Input label="Quartier (compatibilité)" value={newAddr.district} onChangeText={(v) => setNewAddr({ ...newAddr, district: v })} placeholder="Renseigné depuis la zone si vide" icon="home" />
-            <Input label="Indications" value={newAddr.instructions} onChangeText={(v) => setNewAddr({ ...newAddr, instructions: v })} placeholder="Instructions complémentaires" multiline numberOfLines={2} />
-            <Pressable style={styles.locationButton} onPress={useCurrentLocation}><Feather name="crosshair" size={16} color={colors.primary} /><Text style={styles.locationButtonText}>{newAddr.latitude != null ? 'Position GPS enregistrée' : 'Utiliser ma position'}</Text></Pressable>
-            <Input label="Téléphone *" value={newAddr.phone} onChangeText={(v) => setNewAddr({ ...newAddr, phone: v })} keyboardType="phone-pad" icon="phone" />
-            <View style={styles.formActions}>
-              <Button label="Annuler" variant="ghost" onPress={() => setShowAddrForm(false)} style={{ flex: 1 }} />
-              <Button label="Enregistrer" onPress={handleSaveAddr} style={{ flex: 1, marginLeft: spacing.md }} />
-            </View>
+        {invalidSelectionMessage ? (
+          <Card style={styles.selectionErrorCard}>
+            <Feather name="alert-circle" size={22} color={colors.danger} />
+            <Text style={styles.selectionErrorText}>{invalidSelectionMessage}</Text>
           </Card>
-        ) : (
-          <Pressable style={styles.addAddrBtn} onPress={() => setShowAddrForm(true)}>
-            <Feather name="plus" size={18} color={colors.primary} />
-            <Text style={styles.addAddrText}>Ajouter une adresse</Text>
-          </Pressable>
-        )}
+        ) : null}
+        {step === 'address' ? (
+          <>
+            {/* ─── Livraison O/N — toggle avant adresse (si pas livraison, pas besoin d'adresse) ─── */}
+            <Card style={styles.deliveryToggleCard}>
+              <Pressable style={styles.deliveryToggleRow} onPress={() => setIncludeDelivery(!includeDelivery)}>
+                <View style={styles.deliveryToggleLeft}>
+                  <View style={[styles.deliveryIcon, { backgroundColor: includeDelivery ? colors.secondaryDeep + '18' : colors.surfaceAlt }]}>
+                    <MaterialCommunityIcons name={includeDelivery ? 'truck-fast' : 'handshake-outline'} size={20} color={includeDelivery ? colors.secondaryDeep : colors.textMuted} />
+                  </View>
+                  <View>
+                    <Text style={styles.deliveryTitle}>
+                      {includeDelivery ? 'Livraison à domicile' : 'Retrait chez le vendeur'}
+                    </Text>
+                    <Text style={styles.deliverySub}>
+                      {includeDelivery
+                        ? `1 000 FCFA par vendeur · paiement au livreur`
+                        : `Rendez-vous en main propre · sans frais`}
+                    </Text>
+                  </View>
+                </View>
+                <SwitchToggle value={includeDelivery} onValueChange={setIncludeDelivery} />
+              </Pressable>
+            </Card>
 
-        {/* Récap par vendeur */}
-        <Text style={styles.sectionTitle}>Récapitulatif</Text>
-        {sellerGroups.map((group) => (
+            {includeDelivery && (
+              <>
+                {/* Adresse de livraison */}
+                <Text style={styles.sectionTitle}>Adresse de livraison</Text>
+                {addresses.map((addr) => (
+                  <Pressable
+                    key={addr.id}
+                    style={[styles.addrCard, selectedAddr === addr.id && styles.addrCardActive]}
+                    onPress={() => setSelectedAddr(addr.id)}
+                  >
+                    <View style={styles.radio}>{selectedAddr === addr.id ? <View style={styles.radioInner} /> : null}</View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.addrCity}>{addr.city} — {addr.district}</Text>
+                      {addr.instructions ? <Text style={styles.addrInfo}>{addr.instructions}</Text> : null}
+                      <Text style={styles.addrPhone}>{addr.contact_phone}</Text>
+                    </View>
+                    {addr.is_default ? <View style={styles.defaultTag}><Text style={styles.defaultText}>Par défaut</Text></View> : null}
+                  </Pressable>
+                ))}
+
+                {showAddrForm ? (
+                  <Card style={styles.addrForm}>
+                    <Text style={styles.fieldLabel}>Ville</Text>
+                    <ChoiceChips options={CITY_LIST} value={newAddr.city} onChange={(city) => setNewAddr({ ...newAddr, city, zoneId: '' })} />
+                    <Text style={styles.fieldLabel}>Zone *</Text>
+                    <ChoiceChips options={getZonesForCity(newAddr.city).map((zone) => ({ id: zone.id, label: zone.name }))} value={newAddr.zoneId} onChange={(zoneId) => setNewAddr({ ...newAddr, zoneId })} />
+                    <Input label="Repère *" value={newAddr.landmark} onChangeText={(v) => setNewAddr({ ...newAddr, landmark: v })} placeholder="Ex: portail bleu près de la pharmacie" icon="map-pin" />
+                    <Input label="Quartier (compatibilité)" value={newAddr.district} onChangeText={(v) => setNewAddr({ ...newAddr, district: v })} placeholder="Renseigné depuis la zone si vide" icon="home" />
+                    <Input label="Indications" value={newAddr.instructions} onChangeText={(v) => setNewAddr({ ...newAddr, instructions: v })} placeholder="Instructions complémentaires" multiline numberOfLines={2} />
+                    <Pressable style={styles.locationButton} onPress={useCurrentLocation}><Feather name="crosshair" size={16} color={colors.primary} /><Text style={styles.locationButtonText}>{newAddr.latitude != null ? 'Position GPS enregistrée' : 'Utiliser ma position'}</Text></Pressable>
+                    <Input label="Téléphone *" value={newAddr.phone} onChangeText={(v) => setNewAddr({ ...newAddr, phone: v })} keyboardType="phone-pad" icon="phone" />
+                    <View style={styles.formActions}>
+                      <Button label="Annuler" variant="ghost" onPress={() => setShowAddrForm(false)} style={{ flex: 1 }} />
+                      <Button label="Enregistrer" onPress={handleSaveAddr} style={{ flex: 1, marginLeft: spacing.md }} />
+                    </View>
+                  </Card>
+                ) : (
+                  <Pressable style={styles.addAddrBtn} onPress={() => setShowAddrForm(true)}>
+                    <Feather name="plus" size={18} color={colors.primary} />
+                    <Text style={styles.addAddrText}>Ajouter une adresse</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
+          </>
+        ) : null}
+
+        {step === 'review' ? (
+          <>
+            {/* ─── Étape RÉCAP ─── */}
+            <Card style={styles.recapHeaderCard}>
+              <View style={styles.recapHeaderRow}>
+                <View style={styles.recapHeaderIcon}>
+                  <Feather name={includeDelivery ? 'truck' : 'shopping-bag'} size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.recapHeaderTitle}>
+                    {includeDelivery ? 'Livraison à domicile' : 'Retrait chez le vendeur'}
+                  </Text>
+                  <Text style={styles.recapHeaderSub}>
+                    {includeDelivery
+                      ? (() => {
+                          const a = addresses.find(x => x.id === selectedAddr);
+                          return a ? `${a.city} · ${a.district} · ${a.contact_phone}` : 'Adresse choisie';
+                        })()
+                      : `Vous rencontrerez directement le vendeur`}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </>
+        ) : null}
+
+        {/* Récap par vendeur (visible dans les deux étapes) */}
+        <Text style={styles.sectionTitle}>Articles{step === 'review' ? ` (${itemCount})` : ''}</Text>
+        {activeGroups.map((group) => (
           <Card key={group.sellerId} style={styles.recapCard}>
             <Text style={styles.recapShop}>{group.shop?.name}</Text>
             {group.lines.map((line, idx) => (
@@ -341,9 +492,15 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
               </View>
             ))}
             <View style={styles.recapSub}>
-              <Text style={styles.recapSubLabel}>Sous-total</Text>
+              <Text style={styles.recapSubLabel}>Sous-total boutique</Text>
               <Text style={styles.recapSubAmount}>{formatFCFA(group.subtotal)}</Text>
             </View>
+            {includeDelivery ? (
+              <View style={styles.recapSub}>
+                <Text style={styles.recapSubLabel}>Livraison</Text>
+                <Text style={styles.recapSubAmount}>{formatFCFA(1000)}</Text>
+              </View>
+            ) : null}
           </Card>
         ))}
 
@@ -398,67 +555,66 @@ export function CheckoutScreen({ navigation }: CheckoutScreenProps) {
           </View>
         )}
 
-        {/* Bandeau « Livraison = option séparée » — EXIGENCES UTILISATEUR */}
-        <View style={{
-          backgroundColor: colors.surfaceAlt,
-          borderWidth: 1,
-          borderColor: colors.secondaryDeep,
-          borderStyle: 'dashed',
-          padding: spacing.md,
-          borderRadius: radius.md,
-          marginHorizontal: spacing.lg,
-          marginTop: spacing.sm,
-          marginBottom: spacing.md,
-        }}>
-          <View style={{flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start'}}>
-            <MaterialCommunityIcons name="truck-fast-outline" size={22} color={colors.secondaryDeep} />
-            <View style={{flex: 1, gap: 4}}>
-              <Text style={{
-                fontFamily: typography.fontFamily,
-                fontSize: typography.sizes.small,
-                fontWeight: typography.weights.bold,
-                color: colors.secondaryDeep,
-              }}>
-                📦 LIVRAISON — OPTION SÉPARÉE
-              </Text>
-              <Text style={{
-                fontFamily: typography.fontFamily,
-                fontSize: typography.sizes.caption,
-                color: colors.text,
-                lineHeight: 19,
-              }}>
-                Les frais de livraison ne sont JAMAIS inclus dans le prix du produit.
-                Ils sont calculés ci-dessous par vendeur et payés au livreur indépendant.
-              </Text>
-            </View>
-          </View>
-        </View>
-
         {/* Totaux */}
-        <Card style={styles.totalsCard}>
-          <View style={styles.totalRow}><Text style={styles.totalLabel}>Sous-total</Text><Text style={styles.totalValue}>{formatFCFA(total)}</Text></View>
+        <Card style={styles.totalCard}>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Sous-total</Text>
+            <Text style={styles.totalValue}>{formatFCFA(activeSubtotal)}</Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Livraison{includeDelivery ? ` (${sellerCount} vendeur${sellerCount > 1 ? 's' : ''})` : ' (désactivée)'}</Text>
+            <Text style={[styles.totalValue, !includeDelivery && { color: colors.textMuted }]}>{includeDelivery ? formatFCFA(deliveryFee) : '—'}</Text>
+          </View>
           {discountAmount > 0 ? (
             <View style={styles.totalRow}>
               <Text style={styles.discountLabel}>Réduction</Text>
               <Text style={styles.discountValue}>−{formatFCFA(discountAmount)}</Text>
             </View>
           ) : null}
-          <View style={styles.totalRow}><Text style={styles.totalLabel}>Livraison ({sellerGroups.length} vendeur{sellerGroups.length > 1 ? 's' : ''})</Text><Text style={styles.totalValue}>{formatFCFA(deliveryFee)}</Text></View>
           <View style={styles.divider} />
           <View style={styles.totalRow}><Text style={styles.grandTotalLabel}>Total à payer</Text><Text style={styles.grandTotal}>{formatFCFA(grandTotal)}</Text></View>
         </Card>
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        <View>
-          <Text style={styles.bottomLabel}>Total</Text>
-          <Text style={styles.bottomAmount}>{formatFCFA(grandTotal)}</Text>
-        </View>
-        <Button label="Payer" onPress={handlePlaceOrder} loading={loading} style={{ flex: 1, marginLeft: spacing.lg }} />
+        {/* Bouton Retour contextuel (selon step) */}
+        <Pressable onPress={handleBack} hitSlop={8} style={styles.backBtn}>
+          <Feather name="arrow-left" size={18} color={colors.text} />
+          <Text style={styles.backText}>
+            {step === 'review' ? 'Étape précédente' : 'Retour'}
+          </Text>
+        </Pressable>
+        <Button
+          label={step === 'review' ? 'Confirmer et payer' : 'Continuer'}
+          onPress={handleNext}
+          loading={loading}
+          style={{ flex: 1, marginLeft: spacing.md }}
+          disabled={Boolean(invalidSelectionMessage) || (step === 'address' && includeDelivery && !selectedAddr)}
+        />
       </View>
     </SafeAreaView>
   );
 }
+
+// ─── Switch Toggle ───
+function SwitchToggle({ value, onValueChange }: { value: boolean; onValueChange: (v: boolean) => void }) {
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      hitSlop={6}
+      style={[switchStyles.track, value && switchStyles.trackOn]}
+    >
+      <View style={[switchStyles.thumb, value && switchStyles.thumbOn]} />
+    </Pressable>
+  );
+}
+
+const switchStyles = StyleSheet.create({
+  track: { width: 44, height: 26, borderRadius: 13, backgroundColor: colors.borderLight, padding: 2, justifyContent: 'center' },
+  trackOn: { backgroundColor: colors.secondaryDeep },
+  thumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.surface, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  thumbOn: { transform: [{ translateX: 18 }] },
+});
 
 function ChoiceChips({ options, value, onChange }: { options: readonly (string | { id: string; label: string })[]; value: string; onChange: (value: string) => void }) {
   return <View style={styles.choiceGrid}>{options.map((option) => {
@@ -470,14 +626,12 @@ function ChoiceChips({ options, value, onChange }: { options: readonly (string |
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  title: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
-  titleThread: { alignSelf: 'center', marginBottom: spacing.sm },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: isNarrow ? spacing.md : spacing.lg, paddingHorizontal: isNarrow ? spacing.md : spacing.lg },
+  title: { fontFamily: typography.fontFamily, fontSize: isNarrow ? typography.sizes.title : typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.text },
   /* Bannière invité */
   guestBanner: {
-    marginHorizontal: spacing.lg,
-    padding: spacing.md,
+    marginHorizontal: isNarrow ? spacing.md : spacing.lg,
+    padding: isNarrow ? spacing.sm : spacing.md,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1.5,
@@ -520,8 +674,10 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
     color: colors.textInverse,
   },
-  scroll: { padding: spacing.lg, paddingTop: 0, paddingBottom: 120 },
-  sectionTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.md },
+  scroll: { padding: isNarrow ? spacing.md : spacing.lg, paddingTop: 0, paddingBottom: isNarrow ? 100 : 120 },
+  selectionErrorCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.danger, marginTop: spacing.md },
+  selectionErrorText: { flex: 1, fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.danger, lineHeight: 20 },
+  sectionTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, marginTop: isNarrow ? spacing.md : spacing.lg, marginBottom: isNarrow ? spacing.sm : spacing.md },
   addrCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1.5, borderColor: colors.border },
   addrCardActive: { borderColor: colors.primary, backgroundColor: '#FFF8F0' },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
@@ -571,7 +727,21 @@ const styles = StyleSheet.create({
   promoAppliedAmount: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.success },
   promoRemoveBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: spacing.sm, paddingVertical: spacing.xs },
   promoRemoveText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.danger, fontWeight: typography.weights.semibold },
-  bottomBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.borderLight, paddingBottom: spacing.xxl },
+  bottomBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: isNarrow ? spacing.md : spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.borderLight, paddingBottom: isNarrow ? spacing.lg : spacing.xxl },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceAlt },
+  backText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, fontWeight: typography.weights.medium, color: colors.text },
   bottomLabel: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted },
   bottomAmount: { fontFamily: typography.fontFamily, fontSize: typography.sizes.heading, fontWeight: typography.weights.bold, color: colors.primary },
+  deliveryToggleCard: { marginTop: spacing.md, marginBottom: spacing.md, padding: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.border },
+  deliveryToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  deliveryToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  deliveryIcon: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  deliveryTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.text },
+  deliverySub: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.textMuted, marginTop: 2 },
+  recapHeaderCard: { marginTop: spacing.md, marginBottom: spacing.sm, padding: spacing.md, backgroundColor: colors.primary + '12', borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.primary + '30' },
+  recapHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  recapHeaderIcon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  recapHeaderTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.body, fontWeight: typography.weights.bold, color: colors.primaryDeep },
+  recapHeaderSub: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.text, marginTop: 2, lineHeight: 18 },
+  totalCard: { marginTop: spacing.sm, padding: isNarrow ? spacing.md : spacing.lg, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.border },
 });

@@ -15,7 +15,7 @@ import { ThreadDivider } from '@/components/ui/ThreadDivider';
 import { StampBadge } from '@/components/ui/StampBadge';
 import { formatFCFA, formatDateTime } from '@/lib/format';
 import { FraudDetectionModal } from '@/components/fraud/FraudDetectionModal';
-import { notifyPaymentValidated, notifyProofUploaded } from '@/lib/notifications';
+import { friendlyMessage } from '@/lib/errorMessages';
 import { PAYMENT_OPERATORS } from '@/constants/payment';
 import type { Order, OrderItem, Payment, OrderStatus } from '@/types/models';
 
@@ -51,8 +51,11 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
     Alert.alert('Valider le paiement', `Confirmer la réception de ${formatFCFA(order.total_amount)} ?`, [
       { text: 'Annuler' },
       { text: 'Confirmer ✓', onPress: async () => {
-        await validatePayment(order.id);
-        await notifyPaymentValidated(order.buyer_id, order.id);
+        const { error } = await validatePayment(order.id);
+        if (error) {
+          Alert.alert('Erreur', friendlyMessage(error));
+          return;
+        }
         await load();
       } },
     ]);
@@ -61,7 +64,14 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
   const handleReject = (order: Order) => {
     Alert.alert('Refuser le paiement', 'Le paiement sera refusé et la commande annulée.', [
       { text: 'Annuler' },
-      { text: 'Refuser', style: 'destructive', onPress: async () => { await rejectPayment(order.id); await load(); } },
+      { text: 'Refuser', style: 'destructive', onPress: async () => {
+        const { error } = await rejectPayment(order.id);
+        if (error) {
+          Alert.alert('Erreur', friendlyMessage(error));
+          return;
+        }
+        await load();
+      } },
     ]);
   };
 
@@ -77,7 +87,14 @@ export function SellerOrdersScreen({ navigation }: SellerOrdersScreenProps) {
       in_delivery: 'delivered',
     };
     const nextStatus = next[order.status];
-    if (nextStatus) { await updateOrderStatus(order.id, nextStatus); await load(); }
+    if (nextStatus) {
+      const { error } = await updateOrderStatus(order.id, nextStatus);
+      if (error) {
+        Alert.alert('Erreur', friendlyMessage(error));
+        return;
+      }
+      await load();
+    }
   };
 
   const filtered = filter === 'all' ? orders : orders.filter((o) => o.status === filter);

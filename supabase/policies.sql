@@ -45,7 +45,10 @@ CREATE POLICY "categories_read" ON categories FOR SELECT USING (true);
 -- ============================================================
 -- shops
 -- ============================================================
-CREATE POLICY "shops_read_active" ON shops FOR SELECT USING (
+CREATE POLICY "shops_public_read" ON shops FOR SELECT TO anon USING (
+  status = 'active'
+);
+CREATE POLICY "shops_authenticated_read" ON shops FOR SELECT TO authenticated USING (
   status = 'active' OR owner_id = auth.uid() OR is_admin()
 );
 CREATE POLICY "shops_insert_owner" ON shops FOR INSERT WITH CHECK (auth.uid() = owner_id);
@@ -59,7 +62,10 @@ CREATE POLICY "shops_delete_owner" ON shops FOR DELETE USING (
 -- ============================================================
 -- products
 -- ============================================================
-CREATE POLICY "products_read" ON products FOR SELECT USING (
+CREATE POLICY "products_public_read" ON products FOR SELECT TO anon USING (
+  status = 'available'
+);
+CREATE POLICY "products_authenticated_read" ON products FOR SELECT TO authenticated USING (
   status = 'available' OR EXISTS (
     SELECT 1 FROM shops WHERE shops.id = products.shop_id AND shops.owner_id = auth.uid()
   ) OR is_admin()
@@ -174,12 +180,45 @@ CREATE POLICY "reviews_delete_self" ON reviews FOR DELETE USING (auth.uid() = us
 -- ============================================================
 -- promotions
 -- ============================================================
-CREATE POLICY "promos_read_active" ON promotions FOR SELECT USING (
-  status = 'active' OR EXISTS (
+CREATE POLICY "promos_public_read" ON promotions FOR SELECT TO anon USING (
+  status = 'active'
+  AND start_date <= now()
+  AND end_date >= now()
+  AND EXISTS (
+    SELECT 1 FROM shops
+    WHERE shops.id = promotions.shop_id AND shops.status = 'active'
+  )
+  AND (
+    product_id IS NULL OR EXISTS (
+      SELECT 1 FROM products
+      WHERE products.id = promotions.product_id
+        AND products.shop_id = promotions.shop_id
+        AND products.status = 'available'
+    )
+  )
+);
+CREATE POLICY "promos_authenticated_read" ON promotions FOR SELECT TO authenticated USING (
+  (
+    status = 'active'
+    AND start_date <= now()
+    AND end_date >= now()
+    AND EXISTS (
+      SELECT 1 FROM shops
+      WHERE shops.id = promotions.shop_id AND shops.status = 'active'
+    )
+    AND (
+      product_id IS NULL OR EXISTS (
+        SELECT 1 FROM products
+        WHERE products.id = promotions.product_id
+          AND products.shop_id = promotions.shop_id
+          AND products.status = 'available'
+      )
+    )
+  ) OR EXISTS (
     SELECT 1 FROM shops WHERE shops.id = promotions.shop_id AND shops.owner_id = auth.uid()
   ) OR is_admin()
 );
-CREATE POLICY "promos_owner_manage" ON promotions FOR ALL USING (
+CREATE POLICY "promos_owner_manage" ON promotions FOR ALL TO authenticated USING (
   EXISTS (
     SELECT 1 FROM shops WHERE shops.id = promotions.shop_id AND shops.owner_id = auth.uid()
   ) OR is_admin()

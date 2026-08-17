@@ -5,7 +5,8 @@ import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
-import { getConversations } from '@/lib/dataService';
+import { getConversations, isDemoMode } from '@/lib/dataService';
+import { DEMO_BUYER } from '@/data/demoData';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { formatRelativeDate } from '@/lib/format';
@@ -17,16 +18,25 @@ interface ConversationListScreenProps {
 
 export function ConversationListScreen({ navigation }: ConversationListScreenProps) {
   const { profile } = useAuth();
+  const buyerId = profile?.id ?? (isDemoMode ? DEMO_BUYER.id : null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      const convs = await getConversations(profile?.id ?? 'demo-buyer');
+    let active = true;
+    if (!buyerId) {
+      setConversations([]);
+      setLoading(false);
+      return () => { active = false; };
+    }
+    setLoading(true);
+    void getConversations(buyerId).then((convs) => {
+      if (!active) return;
       setConversations(convs);
       setLoading(false);
-    })();
-  }, [profile]);
+    });
+    return () => { active = false; };
+  }, [buyerId]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

@@ -4,6 +4,8 @@
 // (postgrest-js) reconnaisse le schéma via GenericTable/GenericSchema. Sans ce champ,
 // le générique `Schema` résout à `never` et toutes les requêtes perdent leur typage.
 
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
 export interface Database {
   public: {
     Tables: {
@@ -78,7 +80,9 @@ export interface Database {
           social_links: import('@/types/models').ShopSocialLinks | null;
           orange_money_number: string | null;
           moov_money_number: string | null;
-          status: 'active' | 'paused' | 'pending';
+          coris_money_number: string | null;
+          wave_number: string | null;
+          status: 'active' | 'paused';
           created_at: string;
         };
         Insert: {
@@ -98,7 +102,9 @@ export interface Database {
           social_links?: import('@/types/models').ShopSocialLinks | null;
           orange_money_number?: string | null;
           moov_money_number?: string | null;
-          status?: 'active' | 'paused' | 'pending';
+          coris_money_number?: string | null;
+          wave_number?: string | null;
+          status?: 'active' | 'paused';
         };
         Update: Partial<Database['public']['Tables']['shops']['Insert']>;
         Relationships: [
@@ -441,7 +447,7 @@ export interface Database {
           id: string;
           delivery_id: string;
           amount: number;
-          operator: 'orange_money' | 'moov_money';
+          operator: Database['public']['Enums']['payment_operator'];
           proof_image_url: string | null;
           status: 'pending' | 'validated' | 'rejected';
           created_at: string;
@@ -450,7 +456,7 @@ export interface Database {
         Insert: {
           delivery_id: string;
           amount: number;
-          operator: 'orange_money' | 'moov_money';
+          operator: Database['public']['Enums']['payment_operator'];
           proof_image_url?: string | null;
           status?: 'pending' | 'validated' | 'rejected';
           validated_at?: string | null;
@@ -761,12 +767,22 @@ export interface Database {
           id: string;
           product_id: string;
           image_url: string;
+          image_code: string | null;
+          storage_path: string | null;
+          mime_type: string | null;
+          size_bytes: number | null;
           position: number;
+          created_at: string;
         };
         Insert: {
           product_id: string;
           image_url: string;
+          image_code?: string | null;
+          storage_path?: string | null;
+          mime_type?: string | null;
+          size_bytes?: number | null;
           position?: number;
+          created_at?: string;
         };
         Update: Partial<Database['public']['Tables']['product_images']['Insert']>;
         Relationships: [
@@ -826,6 +842,7 @@ export interface Database {
             | 'delivered'
             | 'cancelled';
           note: string | null;
+          cancellation_reason: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -877,12 +894,14 @@ export interface Database {
           product_id: string;
           quantity: number;
           unit_price: number;
+          variant_info: Json | null;
         };
         Insert: {
           order_id: string;
           product_id: string;
           quantity: number;
           unit_price: number;
+          variant_info?: Json | null;
         };
         Update: Partial<Database['public']['Tables']['order_items']['Insert']>;
         Relationships: [
@@ -907,20 +926,22 @@ export interface Database {
           id: string;
           order_id: string;
           amount: number;
-          operator: 'orange_money' | 'moov_money';
+          operator: Database['public']['Enums']['payment_operator'];
           proof_image_url: string | null;
           status: 'pending' | 'validated' | 'rejected';
           created_at: string;
           validated_at: string | null;
+          rejection_reason: string | null;
         };
         Insert: {
           order_id: string;
           amount: number;
-          operator: 'orange_money' | 'moov_money';
+          operator: Database['public']['Enums']['payment_operator'];
           proof_image_url?: string | null;
           status?: 'pending' | 'validated' | 'rejected';
           created_at?: string;
           validated_at?: string | null;
+          rejection_reason?: string | null;
         };
         Update: Partial<Database['public']['Tables']['payments']['Insert']>;
         Relationships: [
@@ -1073,6 +1094,11 @@ export interface Database {
           sender_id: string;
           content?: string | null;
           image_url?: string | null;
+          audio_url?: string | null;
+          audio_duration?: number | null;
+          video_url?: string | null;
+          video_duration?: number | null;
+          video_thumbnail?: string | null;
           read?: boolean;
           created_at?: string;
         };
@@ -1402,10 +1428,45 @@ export interface Database {
         Args: { p_shop_id: string; p_limit?: number };
         Returns: { product_id: string; product_name: string; view_count: number }[];
       };
+      set_product_images: {
+        Args: { p_product_id: string; p_images: Json };
+        Returns: undefined;
+      };
+      submit_payment_proof: {
+        Args: {
+          p_order_id: string;
+          p_amount: number;
+          p_operator: Database['public']['Enums']['payment_operator'];
+          p_proof_image_url: string;
+        };
+        Returns: {
+          payment_id: string;
+          payment_status: Database['public']['Enums']['payment_status'];
+          order_status: Database['public']['Enums']['order_status'];
+        }[];
+      };
+      validate_order_payment: {
+        Args: { p_order_id: string };
+        Returns: undefined;
+      };
+      reject_order_payment: {
+        Args: { p_order_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      create_order_with_items: {
+        Args: {
+          p_seller_id: string;
+          p_total_amount: number;
+          p_address_id: string | null;
+          p_note: string | null;
+          p_items: Record<string, unknown>[];
+        };
+        Returns: string;
+      };
     };
     Enums: {
       user_role: 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
-      shop_status: 'active' | 'paused' | 'pending';
+      shop_status: 'active' | 'paused';
       product_status: 'available' | 'out_of_stock';
       order_status:
         | 'pending_payment'
@@ -1414,7 +1475,7 @@ export interface Database {
         | 'in_delivery'
         | 'delivered'
         | 'cancelled';
-      payment_operator: 'orange_money' | 'moov_money';
+      payment_operator: 'orange_money' | 'moov_money' | 'coris_money' | 'wave';
       payment_status: 'pending' | 'validated' | 'rejected';
       delivery_status:
         | 'pending'

@@ -2,13 +2,13 @@
   "expo": {
     "name": "Boutikplus",
     "slug": "boutikplus",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "boutikplus",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "owner": "chrisouedraogos-team",
+    "owner": "chriss1137s-team",
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
@@ -28,7 +28,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.boutikplus.app",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "NSCameraUsageDescription": "Boutikplus a besoin de votre appareil photo pour prendre des photos de produits et des preuves de paiement.",
         "NSPhotoLibraryUsageDescription": "Boutikplus a besoin d'accéder à vos photos pour ajouter des produits et des preuves de paiement.",
@@ -54,7 +54,7 @@
         "backgroundColor": "#FF8A5C"
       },
       "package": "com.boutikplus.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -139,7 +139,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "dd937fae-1faa-4dc0-a30f-7e8c9ace2654"
+        "projectId": "2f3f0518-75bf-4d1d-bfa0-aa9a3198d4f8"
       }
     }
   }

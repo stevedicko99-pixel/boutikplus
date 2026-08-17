@@ -3,7 +3,7 @@
 // (acheteur + vendeur + livreur). Admin et super_admin restent des rôles de confiance.
 export type UserRole = 'buyer' | 'seller' | 'driver' | 'admin' | 'super_admin';
 
-export type ShopStatus = 'active' | 'paused' | 'pending' | 'rejected';
+export type ShopStatus = 'active' | 'paused';
 
 export type ProductStatus = 'available' | 'out_of_stock';
 
@@ -105,7 +105,6 @@ export interface Shop {
   wave_number: string | null;
   is_verified?: boolean;
   verified_at?: string | null;
-  rejection_reason?: string | null;
   status: ShopStatus;
   created_at: string;
 }
@@ -128,7 +127,12 @@ export interface ProductImage {
   id: string;
   product_id: string;
   image_url: string;
+  image_code: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
   position: number;
+  created_at: string;
 }
 
 // Type de vidéo produit : upload natif (fichier téléversé) ou lien externe
@@ -206,6 +210,7 @@ export interface Payment {
   status: PaymentStatus;
   created_at: string;
   validated_at: string | null;
+  rejection_reason: string | null;
 }
 
 export interface DeliveryAddress {
@@ -300,6 +305,11 @@ export interface Message {
   sender_id: string;
   content: string | null;
   image_url: string | null;
+  audio_url: string | null;
+  audio_duration: number | null;
+  video_url: string | null;
+  video_duration: number | null;
+  video_thumbnail: string | null;
   created_at: string;
   read: boolean;
 }

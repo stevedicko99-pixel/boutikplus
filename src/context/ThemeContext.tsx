@@ -15,17 +15,48 @@ export type ResolvedTheme = 'light' | 'dark';
 
 const darkColors = {
   ...lightColors,
-  background: '#1A1420',
-  surface: '#261E2E',
-  surfaceAlt: '#32283D',
-  surfaceDeep: '#3D314A',
-  text: '#F0E8F5',
-  textMuted: '#9A8FA8',
+  // ── Dark mode « Nuit chaude » : tons chauds (terracotta atténué), pas violets génériques ──
+  background: '#0F0D0B',          // noir chaud profond
+  surface: '#1A1612',            // brun très foncé, neutre chaud
+  surfaceAlt: '#241F1A',         // brun chaud pour éléments secondaires
+  surfaceDeep: '#2E2823',        // brun chaud plus profond
+  surfaceElevated: '#221C17',    // cartes surélevées
+  surfaceSunken: '#1A1612',
   ink: '#FFFFFF',
-  border: '#3D314A',
-  borderLight: '#32283D',
+  text: '#F2EBE2',               // crème douce, pas violet
+  textMuted: '#A29488',           // brun chaud atténué
+  textSubtle: '#7A6E62',
+  textInverse: '#1A1410',
+  border: '#2E2823',
+  borderLight: '#241F1A',
+  borderStrong: '#3F3628',
+  // Accent sarcelle conservé (lisible sur fond sombre)
+  accent: '#3AA6A5',              // version plus claire pour contraste dark
+  accentLight: '#5BC4C3',
+  accentSurface: '#0A2A2A',
+  accentText: '#5BC4C3',
+  // Semantic : versions plus lumineuses pour dark mode
+  success: '#3CB371',
+  warning: '#F0B440',
+  danger: '#F06464',
+  info: '#3AA6A5',
+  successSurface: '#0F2820',
+  warningSurface: '#28210A',
+  dangerSurface: '#2A1410',
+  infoSurface: '#0A2A2A',
+  // Brand & paiements
+  promo: '#FF6B5A',
+  primary: '#E8916B',            // terracotta plus claire en dark pour contraste
+  primaryLight: '#F2A98A',
+  primaryDark: '#C24A1E',
+  primaryDeep: '#9B3A18',
+  gold: '#E6C466',
+  goldLight: '#F0D088',
+  glass: 'rgba(26,22,18,0.74)',
+  glassStrong: 'rgba(26,22,18,0.88)',
+  glow: 'rgba(232,145,107,0.30)',
   overlay: 'rgba(0, 0, 0, 0.7)',
-  shadow: 'rgba(0, 0, 0, 0.4)',
+  shadow: 'rgba(0, 0, 0, 0.5)',
 } as unknown as typeof lightColors;
 
 interface ThemeContextValue {

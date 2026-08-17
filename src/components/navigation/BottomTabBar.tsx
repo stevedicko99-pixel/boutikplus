@@ -1,5 +1,6 @@
 import { StyleSheet, View, Pressable, Text, Platform, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useCart } from '@/context/CartContext';
@@ -41,17 +42,39 @@ export function BottomTabBar({ navigation, currentRoute }: BottomTabBarProps) {
           return (
             <Pressable
               key={tab.key}
-              style={({ pressed }) => [styles.tab, desktop && styles.tabDesktop, active && styles.tabActive, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.tab,
+                desktop && styles.tabDesktop,
+                active && styles.tabActive,
+                pressed && styles.pressed,
+              ]}
               onPress={() => navigation.navigate(tab.screen)}
               accessibilityRole="tab"
               accessibilityLabel={`${tab.label}${badgeValue ? `, ${badgeValue} nouveau${badgeValue > 1 ? 'x' : ''}` : ''}`}
               accessibilityState={{ selected: active }}
             >
+              {active ? (
+                <LinearGradient
+                  colors={[colors.accentGradient[0] + '33', colors.accentGradient[2] + '22']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.activePill}
+                />
+              ) : null}
               <View style={styles.iconWrap}>
-                <Feather name={tab.icon} size={desktop ? 19 : 21} color={active ? colors.primaryDeep : colors.textMuted} />
-                {badgeValue > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{badgeValue > 9 ? '9+' : badgeValue}</Text></View> : null}
+                <Feather
+                  name={tab.icon}
+                  size={desktop ? 19 : 21}
+                  color={active ? colors.accentDeep : colors.textMuted}
+                />
+                {badgeValue > 0 ? (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{badgeValue > 9 ? '9+' : badgeValue}</Text>
+                  </View>
+                ) : null}
               </View>
               <Text style={[styles.label, active && styles.labelActive]}>{tab.label}</Text>
+              {active ? <View style={styles.activeDot} /> : <View style={styles.dotPlaceholder} />}
             </Pressable>
           );
         })}
@@ -61,18 +84,54 @@ export function BottomTabBar({ navigation, currentRoute }: BottomTabBarProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: spacing.md, paddingTop: spacing.sm, alignItems: 'center', backgroundColor: 'transparent' },
+  container: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm,
+    alignItems: 'center', backgroundColor: 'transparent',
+  },
   containerDesktop: { paddingBottom: spacing.lg, paddingHorizontal: spacing.xl },
-  dock: { width: '100%', maxWidth: 620, minHeight: 68, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.xs, borderWidth: 1, borderColor: colors.borderLight, ...Platform.select({ ios: { shadowColor: colors.ink, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 18 }, android: { elevation: 10 }, default: { boxShadow: '0 10px 30px rgba(31,24,40,0.12)' } as any }) },
+  dock: {
+    width: '100%', maxWidth: 620, minHeight: 68,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.xs,
+    borderWidth: 1, borderColor: colors.borderLight,
+    ...Platform.select({
+      ios: { shadowColor: colors.ink, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 18 },
+      android: { elevation: 10 },
+      default: { boxShadow: '0 10px 30px rgba(31,24,40,0.12)' } as any,
+    }),
+  },
   dockDesktop: { maxWidth: 720, minHeight: 60, borderRadius: radius.pill, paddingHorizontal: spacing.sm },
-  tab: { flex: 1, minWidth: 52, minHeight: 56, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: radius.lg, borderWidth: 2, borderColor: 'transparent' },
+  tab: {
+    flex: 1, minWidth: 52, minHeight: 56,
+    alignItems: 'center', justifyContent: 'center', gap: 3,
+    borderRadius: radius.lg,
+    borderWidth: 2, borderColor: 'transparent',
+    position: 'relative',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? { transitionProperty: 'background-color', transitionDuration: '160ms' } as any : {}),
+  },
   tabDesktop: { minHeight: 48, flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill },
-  tabActive: { backgroundColor: colors.surfaceAlt },
-  pressed: { opacity: 0.68 },
+  tabActive: {},
+  pressed: { opacity: 0.7 },
   focused: { borderColor: colors.stitchDeep },
+  activePill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+  },
   iconWrap: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', top: -5, right: -7, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.promo, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 2, borderColor: colors.surface },
+  badge: {
+    position: 'absolute', top: -5, right: -7,
+    minWidth: 18, height: 18, borderRadius: 9,
+    backgroundColor: colors.promo,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4, borderWidth: 2, borderColor: colors.surface,
+  },
   badgeText: { fontFamily: typography.fontFamily, fontSize: 9, fontWeight: typography.weights.bold, color: colors.textInverse },
   label: { fontFamily: typography.fontFamily, fontSize: 10, color: colors.textMuted, fontWeight: typography.weights.medium },
-  labelActive: { color: colors.primaryDeep, fontWeight: typography.weights.bold },
+  labelActive: { color: colors.accentDeep, fontWeight: typography.weights.bold },
+  activeDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.accentDeep, marginTop: 2 },
+  dotPlaceholder: { width: 4, height: 4, marginTop: 2, opacity: 0 },
 });

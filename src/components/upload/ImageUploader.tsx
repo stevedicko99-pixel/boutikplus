@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Pressable, Alert, Animated, Easing } from 'react-native';
+import { StyleSheet, View, Text, Pressable, Alert, Animated, Easing, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius, shadows } from '@/theme';
@@ -16,6 +16,7 @@ import {
 } from '@/lib/storage';
 import { pickWithChoice } from '@/lib/photoStudio';
 import { logger } from '@/lib/logger';
+import { useConnectivity } from '@/context/ConnectivityContext';
 
 // ============================================================
 // Types
@@ -25,7 +26,9 @@ export interface UploadedImage {
   uri: string;        // URI d'affichage (file://, data:, ou URL publique)
   url?: string;       // URL Supabase si uploadé avec succès
   path?: string;      // Chemin Storage si uploadé
+  imageCode?: string; // Identifiant stable utilisé pour les reprises d'upload
   isUploading?: boolean;
+  uploadProgress?: number | null;
   uploadError?: string | null;
 }
 
@@ -72,16 +75,20 @@ export function ImageUploader({
   testID,
 }: ImageUploaderProps) {
   const [images, setImages] = useState<UploadedImage[]>(initialImages);
+  const imagesRef = useRef(images);
+  const { isOnline } = useConnectivity();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Synchronise avec initialImages (mode édition)
   useEffect(() => {
+    imagesRef.current = initialImages;
     setImages(initialImages);
   }, [initialImages]);
 
   // Notifie le parent
   const notifyChange = useCallback(
     (next: UploadedImage[]) => {
+      imagesRef.current = next;
       setImages(next);
       onChange?.(next);
     },
@@ -93,43 +100,40 @@ export function ImageUploader({
   const handlePick = useCallback(
     async (fromCamera: boolean) => {
       try {
-        const result = await pickAndCompressImage(fromCamera);
-        if (!result) return;
-
-        const validationError = validateFile(
-          { uri: result.uri, size: (result as any).fileSize },
-          false,
-        );
-        if (validationError) {
-          Alert.alert('Fichier invalide', validationError.message);
+        if (!isOnline) {
+          Alert.alert('Connexion requise', 'Reconnectez-vous avant de téléverser une image.');
           return;
         }
-
-        const newImage: UploadedImage = { uri: result.uri, isUploading: false };
-        const next = [...images, newImage].slice(0, maxImages);
+        const remaining = maxImages - images.length;
+        const results = !fromCamera && remaining > 1
+          ? await pickMultipleImages(remaining)
+          : [await pickAndCompressImage(fromCamera)].filter(Boolean) as Awaited<ReturnType<typeof pickAndCompressImage>>[];
+        if (!results.length) return;
+        const newImages = results.map((result) => ({ uri: result!.uri, isUploading: false }));
+        const next = [...images, ...newImages].slice(0, maxImages);
         notifyChange(next);
-
-        // Upload auto vers Supabase
-        handleUpload(newImage, next.length - 1, next);
+        newImages.forEach((image, offset) => {
+          void handleUpload(image, images.length + offset, next);
+        });
       } catch (e: any) {
         logger.error('ImageUploader: pick error', e);
         Alert.alert('Erreur', e?.message ?? 'Impossible de sélectionner l\'image');
       }
     },
-    [images, maxImages, notifyChange],
+    [images, maxImages, notifyChange, isOnline],
   );
 
   // ── Upload ────────────────────────────────────────────────
 
   const handleUpload = useCallback(
-    async (image: UploadedImage, index: number, currentList: UploadedImage[]) => {
+    async (image: UploadedImage, index: number, _currentList: UploadedImage[]) => {
       if (!isLocalMediaUri(image.uri)) {
         return; // Déjà uploadé (URL publique)
       }
 
       // Marque en cours
-      const pendingList = currentList.map((img, i) =>
-        i === index ? { ...img, isUploading: true, uploadError: null } : img,
+      const pendingList = imagesRef.current.map((img, i) =>
+        i === index ? { ...img, isUploading: true, uploadProgress: null, uploadError: null } : img,
       );
       notifyChange(pendingList);
 
@@ -137,16 +141,30 @@ export function ImageUploader({
         const uploaded = await uploadImage(
           bucket,
           image.uri,
-          `${filePrefix}_${Date.now()}`,
+          filePrefix,
           (progress: UploadProgress) => {
-            // Màj de la progression (facultatif, via image metadata)
+            const progressList = imagesRef.current.map((img, i) =>
+              i === index ? { ...img, uploadProgress: progress.percent } : img,
+            );
+            notifyChange(progressList);
           },
+          20000,
+          { fileCode: image.imageCode, path: image.path, maxRetries: 1 },
         );
 
         if (uploaded) {
-          const successList = pendingList.map((img, i) =>
+          const successList = imagesRef.current.map((img, i) =>
             i === index
-              ? { ...img, uri: uploaded.url, url: uploaded.url, path: uploaded.path, isUploading: false, uploadError: null }
+              ? {
+                  ...img,
+                  uri: uploaded.url,
+                  url: uploaded.url,
+                  path: uploaded.path,
+                  imageCode: uploaded.imageCode,
+                  isUploading: false,
+                  uploadProgress: 100,
+                  uploadError: null,
+                }
               : img,
           );
           notifyChange(successList);
@@ -164,8 +182,11 @@ export function ImageUploader({
         }
       } catch (e: any) {
         const msg = e instanceof UploadError ? e.message : e?.message ?? 'Échec de l\'upload';
-        const errorList = pendingList.map((img, i) =>
-          i === index ? { ...img, isUploading: false, uploadError: msg } : img,
+        const identity = e instanceof UploadError ? e.uploadIdentity : undefined;
+        const errorList = imagesRef.current.map((img, i) =>
+          i === index
+            ? { ...img, isUploading: false, uploadError: msg, imageCode: identity?.imageCode ?? img.imageCode, path: identity?.path ?? img.path }
+            : img,
         );
         notifyChange(errorList);
         Alert.alert('Erreur d\'upload', msg);
@@ -269,10 +290,14 @@ export function ImageUploader({
             {/* Overlay pendant upload */}
             {img.isUploading && (
               <View style={styles.uploadingOverlay}>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: '60%' }]} />
-                </View>
-                <Text style={styles.uploadingText}>Téléversement…</Text>
+                {img.uploadProgress != null ? (
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, { width: `${img.uploadProgress}%` }]} />
+                  </View>
+                ) : null}
+                <Text style={styles.uploadingText}>
+                  {img.uploadProgress != null ? `Téléversement ${img.uploadProgress}%` : 'Téléversement en cours…'}
+                </Text>
               </View>
             )}
 
@@ -281,6 +306,9 @@ export function ImageUploader({
               <View style={styles.errorOverlay}>
                 <Feather name="alert-circle" size={20} color={colors.danger} />
                 <Text style={styles.errorText}>Échec</Text>
+                <Pressable onPress={() => void handleUpload(img, index, imagesRef.current)} accessibilityRole="button">
+                  <Text style={styles.retryText}>Réessayer</Text>
+                </Pressable>
               </View>
             ) : null}
 
@@ -316,15 +344,15 @@ export function ImageUploader({
           <Pressable
             style={[styles.addBtn, { aspectRatio: square ? 1 : aspectRatio }]}
             onPress={() => {
-              if (allowCamera) {
-                Alert.alert('Ajouter une photo', 'Choisissez la source :', [
-                  { text: 'Annuler', style: 'cancel' },
-                  { text: 'Galerie', onPress: () => handlePick(false) },
-                  { text: 'Appareil photo', onPress: () => handlePick(true) },
-                ]);
-              } else {
-                handlePick(false);
+              if (Platform.OS === 'web' || !allowCamera) {
+                void handlePick(false);
+                return;
               }
+              Alert.alert('Ajouter une photo', 'Choisissez la source :', [
+                { text: 'Annuler', style: 'cancel' },
+                { text: 'Galerie', onPress: () => handlePick(false) },
+                { text: 'Appareil photo', onPress: () => handlePick(true) },
+              ]);
             }}
             accessibilityRole="button"
             accessibilityLabel={addLabel}
@@ -413,6 +441,13 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.caption,
     fontWeight: typography.weights.bold,
     color: colors.textInverse,
+  },
+  retryText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    fontWeight: typography.weights.bold,
+    color: colors.textInverse,
+    textDecorationLine: 'underline',
   },
   removeBtn: {
     position: 'absolute',

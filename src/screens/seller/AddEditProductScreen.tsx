@@ -6,8 +6,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius } from '@/theme';
 import { useAuth } from '@/context/AuthContext';
-import { getShopByOwner, getProduct, createProduct, updateProduct } from '@/lib/dataService';
-import { uploadMultipleImages, pickMultipleImages, deleteStorageObject, isLocalMediaUri } from '@/lib/storage';
+import { getShopByOwner, getProduct, createProduct, updateProduct, setProductImages, deleteProductDraft, type ProductImageInput } from '@/lib/dataService';
+import { uploadMultipleImages, pickMultipleImages, deleteStorageObject, isLocalMediaUri, type UploadResult } from '@/lib/storage';
+import { useConnectivity } from '@/context/ConnectivityContext';
 import { consumeAIResult } from '@/lib/aiResultHolder';
 import { consumePhotoResult } from '@/lib/photoResultHolder';
 import { deleteProductVideo } from '@/lib/videoService';
@@ -20,7 +21,7 @@ import { friendlyMessage } from '@/lib/errorMessages';
 import { formatFCFA } from '@/lib/format';
 import { useToast } from '@/context/ToastContext';
 import { logger } from '@/lib/logger';
-import type { Shop, ProductVideo } from '@/types/models';
+import type { Product, ProductImage, Shop, ProductVideo } from '@/types/models';
 
 interface AddEditProductScreenProps {
   navigation: { navigate: (screen: string, params?: any) => void; goBack: () => void };
@@ -29,6 +30,7 @@ interface AddEditProductScreenProps {
 
 export function AddEditProductScreen({ navigation, route }: AddEditProductScreenProps) {
   const { profile } = useAuth();
+  const { isOnline } = useConnectivity();
   const toast = useToast();
   const productId = route?.params?.productId;
   const isEdit = Boolean(productId);
@@ -40,6 +42,8 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   const [categoryId, setCategoryId] = useState(CATEGORIES[0].id);
   const [stock, setStock] = useState('1');
   const [images, setImages] = useState<string[]>([]);
+  const existingImageMetadata = useRef(new Map<string, ProductImage>());
+  const originalProduct = useRef<Pick<Product, 'name' | 'description' | 'price' | 'category_id' | 'stock' | 'status'> | null>(null);
   const pendingStorageDeletes = useRef<string[]>([]);
   const [videos, setVideos] = useState<ProductVideo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,6 +58,17 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
       if (productId) {
         const p = await getProduct(productId);
         if (p) {
+          originalProduct.current = {
+            name: p.name,
+            description: p.description,
+            price: p.price,
+            category_id: p.category_id,
+            stock: p.stock,
+            status: p.status,
+          };
+          existingImageMetadata.current = new Map(
+            (p.images ?? []).map((image) => [image.image_url, image]),
+          );
           setName(p.name);
           setDescription(p.description ?? '');
           setPrice(String(p.price));
@@ -151,11 +166,19 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   );
 
   const handleAddImage = async () => {
+    if (!isOnline) {
+      toast.warning('Connexion requise', 'Reconnectez-vous pour sélectionner des images.');
+      return;
+    }
     if (images.length >= 10) { Alert.alert('Maximum', '10 photos maximum par produit'); return; }
-    const remaining = 10 - images.length;
-    const picked = await pickMultipleImages(remaining);
-    if (picked.length) {
-      setImages((prev) => [...prev, ...picked.map((img) => img.uri)]);
+    try {
+      const remaining = 10 - images.length;
+      const picked = await pickMultipleImages(remaining);
+      if (picked.length) {
+        setImages((prev) => [...prev, ...picked.map((img) => img.uri)].slice(0, 10));
+      }
+    } catch (error) {
+      toast.error('Photo non acceptée', friendlyMessage(error instanceof Error ? error.message : String(error)));
     }
   };
 
@@ -179,44 +202,72 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
   const handleSave = async () => {
     if (!shop) { toast.warning('Boutique requise', 'Créez d\'abord votre boutique'); return; }
     if (!name || !price) { toast.warning('Champs obligatoires', 'Nom et prix sont requis'); return; }
+    if (!isOnline) { toast.warning('Connexion requise', 'Reconnectez-vous pour téléverser les images du produit.'); return; }
     setLoading(true);
+    let createdProductId: string | null = null;
+    const uploadedThisAttempt: UploadResult[] = [];
     try {
     const priceNum = parseInt(price.replace(/\D/g, ''), 10) || 0;
     const stockNum = parseInt(stock, 10) || 0;
+    let targetProductId = productId ?? null;
 
-    let imageUrls = images;
-    const newImages = images.filter(isLocalMediaUri);
-    if (newImages.length) {
-      setUploadState({ done: 0, total: newImages.length, label: 'Préparation des images…' });
-      try {
-        const uploaded = await uploadMultipleImages('product-images', newImages, `prod_${shop.id}`);
-        if (uploaded.length !== newImages.length) throw new Error('Téléversement incomplet');
-        let uploadedIndex = 0;
-        imageUrls = images.map((uri) => isLocalMediaUri(uri) ? uploaded[uploadedIndex++].url : uri);
-        setUploadState({ done: newImages.length, total: newImages.length, label: `✅ ${newImages.length} image(s) téléversée(s)` });
-      } catch (e: any) {
-        toast.error('Échec de l\'upload', friendlyMessage(e?.message ?? 'Erreur de téléversement'));
-        setLoading(false);
-        setUploadState(null);
-        return;
-      }
-    }
-
-    if (isEdit && productId) {
-      const { error } = await updateProduct(productId, {
+    if (isEdit && targetProductId) {
+      const { error } = await updateProduct(targetProductId, {
         name, description, price: priceNum, category_id: categoryId, stock: stockNum,
         status: stockNum > 0 ? 'available' : 'out_of_stock',
-        image_urls: imageUrls,
       });
-      if (error) { toast.error('Échec de la modification', friendlyMessage(error)); setLoading(false); setUploadState(null); return; }
-      toast.success('Produit modifié', 'Votre produit a été mis à jour');
+      if (error) throw new Error(error);
     } else {
-      const { error } = await createProduct({
-        shopId: shop.id, name, description, price: priceNum, categoryId, stock: stockNum, imageUrls,
+      const created = await createProduct({
+        shopId: shop.id, name, description, price: priceNum, categoryId, stock: stockNum,
       });
-      if (error) { toast.error('Échec de la création', friendlyMessage(error)); setLoading(false); setUploadState(null); return; }
-      toast.success('Produit ajouté', 'Votre produit est maintenant en ligne');
+      if (created.error || !created.productId) throw new Error(created.error ?? 'Produit non créé');
+      targetProductId = created.productId;
+      createdProductId = created.productId;
     }
+
+    const newImages = images.filter(isLocalMediaUri);
+    let uploaded: UploadResult[] = [];
+    if (newImages.length) {
+      setUploadState({ done: 0, total: newImages.length, label: 'Téléversement des images…' });
+      uploaded = await uploadMultipleImages(
+        'product-images',
+        newImages,
+        `prod_${targetProductId}`,
+        3,
+        (_index, state, result) => {
+          if (state === 'success' && result) {
+            uploadedThisAttempt.push(result);
+            setUploadState((current) => current ? { ...current, done: current.done + 1 } : current);
+          }
+        },
+      );
+    }
+    let uploadedIndex = 0;
+    const imageRows: ProductImageInput[] = images.map((uri) => {
+      if (!isLocalMediaUri(uri)) {
+        const existing = existingImageMetadata.current.get(uri);
+        return {
+          image_url: uri,
+          image_code: existing?.image_code,
+          storage_path: existing?.storage_path,
+          mime_type: existing?.mime_type,
+          size_bytes: existing?.size_bytes,
+        };
+      }
+      const result = uploaded[uploadedIndex++];
+      return {
+        image_url: result.url,
+        image_code: result.imageCode,
+        storage_path: result.path,
+        mime_type: result.mimeType,
+        size_bytes: result.sizeBytes,
+      };
+    });
+    const imageResult = await setProductImages(targetProductId, imageRows);
+    if (imageResult.error) throw new Error(imageResult.error);
+    setUploadState(newImages.length ? { done: newImages.length, total: newImages.length, label: `${newImages.length} image(s) téléversée(s)` } : null);
+    toast.success(isEdit ? 'Produit modifié' : 'Produit ajouté', isEdit ? 'Votre produit a été mis à jour' : 'Votre produit est maintenant en ligne');
     const obsoleteUrls = [...pendingStorageDeletes.current];
     pendingStorageDeletes.current = [];
     await Promise.all(obsoleteUrls.map((uri) => deleteStorageObject('product-images', uri)));
@@ -224,9 +275,15 @@ export function AddEditProductScreen({ navigation, route }: AddEditProductScreen
     setLoading(false);
     setTimeout(() => navigation.goBack(), 400);
     } catch (e: any) {
+      await Promise.all(uploadedThisAttempt.map((item) => deleteStorageObject('product-images', item.url)));
+      if (createdProductId) {
+        await deleteProductDraft(createdProductId);
+      } else if (isEdit && productId && originalProduct.current) {
+        await updateProduct(productId, originalProduct.current);
+      }
       setLoading(false);
       setUploadState(null);
-      toast.error('Erreur inattendue', friendlyMessage(e?.message ?? String(e)));
+      toast.error('Enregistrement impossible', friendlyMessage(e?.message ?? String(e)));
       logger.error('[AddEditProduct] handleSave error', e);
     }
   };

@@ -1,0 +1,54 @@
+{
+  "results": [
+    {
+      "test": "Load time: Home page (mobile)",
+      "passed": false,
+      "details": "3.0s (threshold: 3s)"
+    },
+    {
+      "test": "Mobile home: 2 products per line (Pinduoduo style)",
+      "passed": true,
+      "details": "Found 2 products/row. Items per row: [2, 6], type: images, total: 8"
+    },
+    {
+      "test": "Low connection banner dismiss",
+      "passed": true,
+      "details": "No low connection banner visible (PASS by default)"
+    },
+    {
+      "test": "Mobile search: 2 products per line",
+      "passed": false,
+      "details": "Found 1 products/row. Items per row: [1, 1, 1, 1, 1], type: images, total: 9"
+    },
+    {
+      "test": "Mobile shop detail: 1 product per line (Shopify Mobile style)",
+      "passed": false,
+      "details": "Found 2 products/row. Items per row: [2, 1], type: images, total: 3"
+    },
+    {
+      "test": "Load time: Home page (desktop)",
+      "passed": true,
+      "details": "2.94s (threshold: 3s)"
+    },
+    {
+      "test": "Desktop home: responsive layout adapts",
+      "passed": true,
+      "details": "Found 4 products/row. Items per row: [4, 1, 1, 1], type: images, total: 7"
+    },
+    {
+      "test": "Desktop search: layout adapts",
+      "passed": true,
+      "details": "Found 4 products/row. Items per row: [4, 4, 4, 4, 2], type: images, total: 18"
+    },
+    {
+      "test": "Desktop shop detail: layout adapts",
+      "passed": true,
+      "details": "Found 3 products/row. Items per row: [3], type: images, total: 3"
+    }
+  ],
+  "summary": {
+    "total": 9,
+    "passed": 6,
+    "failed": 3
+  }
+}

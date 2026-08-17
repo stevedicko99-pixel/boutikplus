@@ -62,6 +62,13 @@ export class ErrorBoundary extends Component<Props, State> {
             votre faute — vos données sont en sécurité.
           </Text>
 
+          {this.state.errorMessage ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorLabel}>Détail de l'erreur :</Text>
+              <Text style={styles.errorText}>{this.state.errorMessage}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.actions}>
             <Pressable style={styles.primaryBtn} onPress={this.handleReload}>
               <Feather name="refresh-cw" size={16} color={colors.textInverse} />
@@ -156,6 +163,28 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.body,
     fontWeight: typography.weights.semibold,
     color: colors.primary,
+  },
+  errorBox: {
+    width: '100%',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  errorLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    fontWeight: typography.weights.bold,
+    color: colors.danger,
+    marginBottom: spacing.xs,
+  },
+  errorText: {
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    color: colors.text,
+    lineHeight: 18,
   },
   hint: {
     fontFamily: typography.fontFamily,

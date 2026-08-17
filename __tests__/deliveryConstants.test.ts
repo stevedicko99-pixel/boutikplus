@@ -123,12 +123,12 @@ describe('delivery constants', () => {
   });
 
   describe('estimateDistanceKm', () => {
-    it('retourne 5 km pour une livraison intra-ville', () => {
-      expect(estimateDistanceKm('Ouagadougou', 'Ouagadougou')).toBe(5);
+    it('retourne 0 km pour deux centres-villes identiques', () => {
+      expect(estimateDistanceKm('Ouagadougou', 'Ouagadougou')).toBe(0);
     });
 
-    it('retourne la distance entre Ouaga et Bobo', () => {
-      expect(estimateDistanceKm('Ouagadougou', 'Bobo-Dioulasso')).toBe(360);
+    it('retourne la distance Haversine entre Ouaga et Bobo', () => {
+      expect(estimateDistanceKm('Ouagadougou', 'Bobo-Dioulasso')).toBe(330.3);
     });
 
     it('est symétrique (A→B = B→A)', () => {
@@ -137,8 +137,8 @@ describe('delivery constants', () => {
       );
     });
 
-    it('retourne une valeur par défaut pour les villes non listées', () => {
-      expect(estimateDistanceKm('Ouagadougou', 'Dori')).toBe(50);
+    it('utilise les coordonnées répertoriées pour Dori', () => {
+      expect(estimateDistanceKm('Ouagadougou', 'Dori')).toBe(245.1);
     });
 
     it('retourne une valeur positive', () => {

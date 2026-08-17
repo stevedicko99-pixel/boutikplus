@@ -1,22 +1,21 @@
 import { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, Pressable, Alert, Modal, ScrollView, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, Text, FlatList, Pressable, Alert, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing, radius } from '@/theme';
-import { getAllShops, approveShop, rejectShop, toggleShopVerified, deleteShop } from '@/lib/dataService';
+import { getAllShops, updateShopStatus, toggleShopVerified, deleteShop } from '@/lib/dataService';
 import { getCategoryName } from '@/constants/categories';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { Input } from '@/components/ui/Input';
 import { formatRelativeDate } from '@/lib/format';
-import type { Shop } from '@/types/models';
+import type { Shop, ShopStatus } from '@/types/models';
 
-type FilterTab = 'all' | 'pending' | 'active' | 'rejected';
+type FilterTab = 'all' | ShopStatus;
 
 interface ShopValidationScreenProps {
   navigation: { goBack: () => void };
@@ -26,8 +25,6 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
   const [allShops, setAllShops] = useState<Shop[]>([]);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [loading, setLoading] = useState(true);
-  const [rejectModal, setRejectModal] = useState<Shop | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -41,52 +38,26 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
     useCallback(() => { load(); }, [load]),
   );
 
-  const filteredShops = allShops.filter((s) => {
-    if (filter === 'all') return true;
-    return s.status === filter;
-  });
+  const filteredShops = filter === 'all'
+    ? allShops
+    : allShops.filter((shop) => shop.status === filter);
 
   const counts = {
     all: allShops.length,
-    pending: allShops.filter((s) => s.status === 'pending').length,
-    active: allShops.filter((s) => s.status === 'active').length,
-    rejected: allShops.filter((s) => s.status === 'rejected').length,
+    active: allShops.filter((shop) => shop.status === 'active').length,
+    paused: allShops.filter((shop) => shop.status === 'paused').length,
   };
 
-  const handleApprove = async (shop: Shop) => {
-    Alert.alert('Approuver', `Valider "${shop.name}" ?`, [
-      { text: 'Annuler' },
-      { text: 'Approuver', onPress: async () => {
-        setBusy(shop.id);
-        const { error } = await approveShop(shop.id);
-        setBusy(null);
-        if (error) Alert.alert('Erreur', error);
-        else {
-          setAllShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, status: 'active' as const } : s));
-        }
-      } },
-    ]);
-  };
-
-  const handleOpenReject = (shop: Shop) => {
-    setRejectModal(shop);
-    setRejectReason('');
-  };
-
-  const handleConfirmReject = async () => {
-    if (!rejectModal) return;
-    if (!rejectReason.trim()) {
-      Alert.alert('Motif requis', 'Veuillez indiquer le motif du refus.');
+  const handleStatusChange = async (shop: Shop) => {
+    const nextStatus: ShopStatus = shop.status === 'active' ? 'paused' : 'active';
+    setBusy(shop.id);
+    const { error } = await updateShopStatus(shop.id, nextStatus);
+    setBusy(null);
+    if (error) {
+      Alert.alert('Erreur', error);
       return;
     }
-    setBusy(rejectModal.id);
-    const { error } = await rejectShop(rejectModal.id, rejectReason.trim());
-    setBusy(null);
-    if (error) Alert.alert('Erreur', error);
-    else {
-      setAllShops((prev) => prev.map((s) => s.id === rejectModal.id ? { ...s, status: 'rejected' as const } : s));
-    }
-    setRejectModal(null);
+    setAllShops((prev) => prev.map((item) => item.id === shop.id ? { ...item, status: nextStatus } : item));
   };
 
   const handleToggleVerified = async (shop: Shop) => {
@@ -96,7 +67,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
     setBusy(null);
     if (error) Alert.alert('Erreur', error);
     else {
-      setAllShops((prev) => prev.map((s) => s.id === shop.id ? { ...s, is_verified: nextVerified } : s));
+      setAllShops((prev) => prev.map((item) => item.id === shop.id ? { ...item, is_verified: nextVerified } : item));
     }
   };
 
@@ -114,9 +85,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
             const { error } = await deleteShop(shop.id);
             setBusy(null);
             if (error) Alert.alert('Erreur', error);
-            else {
-              setAllShops((prev) => prev.filter((s) => s.id !== shop.id));
-            }
+            else setAllShops((prev) => prev.filter((item) => item.id !== shop.id));
           },
         },
       ],
@@ -133,13 +102,11 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
         <View style={{ width: 24 }} />
       </View>
 
-      {/* Onglets de filtre */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
         {([
           { key: 'all' as FilterTab, label: 'Toutes', count: counts.all },
-          { key: 'pending' as FilterTab, label: 'En attente', count: counts.pending },
           { key: 'active' as FilterTab, label: 'Actives', count: counts.active },
-          { key: 'rejected' as FilterTab, label: 'Refusées', count: counts.rejected },
+          { key: 'paused' as FilterTab, label: 'En pause', count: counts.paused },
         ]).map((tab) => (
           <Pressable
             key={tab.key}
@@ -156,7 +123,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
       {loading ? (
         <LoadingSpinner />
       ) : filteredShops.length === 0 ? (
-        <EmptyState icon="briefcase" title="Aucune boutique" message={`Aucune boutique ${filter === 'all' ? '' : 'dans cette catégorie'}`} />
+        <EmptyState icon="briefcase" title="Aucune boutique" message="Aucune boutique dans cette catégorie" />
       ) : (
         <FlatList
           data={filteredShops}
@@ -165,25 +132,17 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
           renderItem={({ item: shop }) => (
             <Card style={styles.shopCard}>
               <View style={styles.shopHead}>
-                <Image
-                  source={{ uri: shop.logo_url || undefined }}
-                  style={styles.logo}
-                  contentFit="cover"
-                />
+                <Image source={{ uri: shop.logo_url || undefined }} style={styles.logo} contentFit="cover" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
                   <Text style={styles.shopMeta}>{shop.city} · {getCategoryName(shop.category_id)}</Text>
                   <Text style={styles.shopDate}>Créée {formatRelativeDate(shop.created_at)}</Text>
                 </View>
-                {shop.status === 'pending' ? (
-                  <Badge label="En attente" color={colors.warning} bgColor="#FFF8E1" />
-                ) : shop.status === 'active' ? (
-                  <Badge label="Active" color={colors.success} bgColor="#E6F7EE" />
-                ) : shop.status === 'rejected' ? (
-                  <Badge label="Refusée" color={colors.danger} bgColor="#FDECEC" />
-                ) : (
-                  <Badge label="En pause" color={colors.textMuted} bgColor={colors.surfaceAlt} />
-                )}
+                <Badge
+                  label={shop.status === 'active' ? 'Active' : 'En pause'}
+                  color={shop.status === 'active' ? colors.success : colors.textMuted}
+                  bgColor={shop.status === 'active' ? '#E6F7EE' : colors.surfaceAlt}
+                />
               </View>
 
               {shop.description ? <Text style={styles.shopDesc} numberOfLines={2}>{shop.description}</Text> : null}
@@ -206,45 +165,16 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
               </View>
 
               <View style={styles.actionRow}>
-                {shop.status === 'pending' ? (
-                  <>
-                    <Button
-                      label="Refuser"
-                      variant="outline"
-                      onPress={() => handleOpenReject(shop)}
-                      style={{ flex: 1 }}
-                      size="sm"
-                      loading={busy === shop.id}
-                    />
-                    <Button
-                      label="Approuver"
-                      onPress={() => handleApprove(shop)}
-                      style={{ flex: 1, marginLeft: spacing.sm }}
-                      size="sm"
-                      loading={busy === shop.id}
-                    />
-                  </>
-                ) : shop.status !== 'rejected' ? (
-                  <Button
-                    label="Refuser"
-                    variant="outline"
-                    onPress={() => handleOpenReject(shop)}
-                    style={{ flex: 1 }}
-                    size="sm"
-                    loading={busy === shop.id}
-                  />
-                ) : null}
-                {shop.status === 'rejected' ? (
-                  <Button
-                    label="Approuver"
-                    onPress={() => handleApprove(shop)}
-                    style={{ flex: 1 }}
-                    size="sm"
-                    loading={busy === shop.id}
-                  />
-                ) : null}
                 <Button
-                  label={shop.is_verified ? 'Retirer badge' : 'Badge vérifiée'}
+                  label={shop.status === 'active' ? 'Mettre en pause' : 'Réactiver'}
+                  variant="outline"
+                  onPress={() => handleStatusChange(shop)}
+                  style={{ flex: 1 }}
+                  size="sm"
+                  loading={busy === shop.id}
+                />
+                <Button
+                  label={shop.is_verified ? 'Retirer badge' : 'Marquer vérifiée'}
                   variant="outline"
                   onPress={() => handleToggleVerified(shop)}
                   style={{ flex: 1, marginLeft: spacing.sm }}
@@ -252,11 +182,7 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
                   loading={busy === shop.id}
                 />
               </View>
-              <Pressable
-                style={styles.deleteRow}
-                onPress={() => handleDelete(shop)}
-                hitSlop={8}
-              >
+              <Pressable style={styles.deleteRow} onPress={() => handleDelete(shop)} hitSlop={8}>
                 <Feather name="trash-2" size={13} color={colors.danger} />
                 <Text style={styles.deleteText}>Supprimer définitivement</Text>
               </Pressable>
@@ -264,28 +190,6 @@ export function ShopValidationScreen({ navigation }: ShopValidationScreenProps) 
           )}
         />
       )}
-
-      {/* Modal de refus avec motif */}
-      <Modal visible={!!rejectModal} transparent animationType="fade" onRequestClose={() => setRejectModal(null)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setRejectModal(null)}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Refuser "{rejectModal?.name}"</Text>
-            <Text style={styles.modalSubtitle}>Indiquez le motif du refus (sera communiqué au vendeur) :</Text>
-            <Input
-              label=""
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder="Ex: Logo de mauvaise qualité, informations incomplètes..."
-              multiline
-              numberOfLines={3}
-            />
-            <View style={styles.modalActions}>
-              <Button label="Annuler" variant="outline" onPress={() => setRejectModal(null)} style={{ flex: 1 }} />
-              <Button label="Confirmer le refus" onPress={handleConfirmReject} style={{ flex: 1, marginLeft: spacing.sm }} />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -314,9 +218,4 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', marginTop: spacing.sm },
   deleteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, marginTop: spacing.md, paddingVertical: spacing.xs },
   deleteText: { fontFamily: typography.fontFamily, fontSize: typography.sizes.caption, color: colors.danger, fontWeight: typography.weights.medium },
-  modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg },
-  modalContent: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.lg },
-  modalTitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.subtitle, fontWeight: typography.weights.bold, color: colors.text, marginBottom: spacing.xs, textAlign: 'center' },
-  modalSubtitle: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.textMuted, marginBottom: spacing.md, textAlign: 'center' },
-  modalActions: { flexDirection: 'row', marginTop: spacing.lg },
 });

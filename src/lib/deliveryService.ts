@@ -46,6 +46,7 @@ let demoRequests: (DeliveryRequest & {
   payment?: DeliveryPayment;
 })[] = [...DEMO_DELIVERY_REQUESTS];
 let demoReviews: DeliveryReview[] = [...DEMO_DRIVER_REVIEWS];
+let demoRequestIdSequence = 0;
 let demoPayments: DeliveryPayment[] = [
   ...(DEMO_DELIVERY_REQUESTS.map((d) => d.payment).filter(Boolean) as DeliveryPayment[]),
 ];
@@ -420,7 +421,7 @@ export async function createDeliveryRequest(
 
   if (useDemo) {
     const now = new Date().toISOString();
-    const newId = `deliv-demo-${Date.now()}`;
+    const newId = `deliv-demo-${Date.now()}-${++demoRequestIdSequence}`;
     const newRequest: DeliveryRequest = {
       id: newId,
       order_id: params.orderId ?? null,
@@ -977,6 +978,31 @@ export interface DriverStats {
   thisMonthEarnings: number;
 }
 
+export async function getDriverStats(driverUserId: string): Promise<DriverStats> {
+  const [active, history, reviews] = await Promise.all([
+    getDriverActiveDeliveries(driverUserId),
+    getDriverDeliveryHistory(driverUserId),
+    getDriverReviews(driverUserId),
+  ]);
+  const completed = history.filter((delivery) => delivery.status === 'delivered');
+  const cancelled = history.filter((delivery) => delivery.status === 'cancelled' || delivery.status === 'refunded');
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const thisMonth = completed.filter((delivery) => new Date(delivery.delivered_at ?? delivery.updated_at) >= monthStart);
+
+  return {
+    totalDeliveries: active.length + history.length,
+    completedDeliveries: completed.length,
+    cancelledDeliveries: cancelled.length,
+    activeDeliveries: active.length,
+    averageRating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0,
+    totalEarnings: completed.reduce((sum, delivery) => sum + delivery.price, 0),
+    thisMonthDeliveries: thisMonth.length,
+    thisMonthEarnings: thisMonth.reduce((sum, delivery) => sum + delivery.price, 0),
+  };
+}
+
 export async function updateDriverLocation(params: {
   deliveryId: string; latitude: number; longitude: number; accuracyM?: number | null;
   heading?: number | null; speedMps?: number | null; recordedAt?: string;
@@ -988,6 +1014,13 @@ export async function updateDriverLocation(params: {
     p_speed_mps: params.speedMps ?? null, p_recorded_at: params.recordedAt ?? new Date().toISOString(),
   });
   return { location: data as DriverLocation | null, error: error?.message ?? null };
+}
+
+export async function getDriverLocation(deliveryId: string): Promise<DriverLocation | null> {
+  if (useDemo) return null;
+  const { data, error } = await supabase.from('driver_locations').select('*').eq('delivery_id', deliveryId).maybeSingle();
+  if (error) console.error('getDriverLocation:', error.message);
+  return data as DriverLocation | null;
 }
 
 export async function getDeliveryEvents(deliveryId: string): Promise<DeliveryEvent[]> {

@@ -167,8 +167,18 @@ export function toFriendlyError(rawError: string | null | undefined): FriendlyEr
     };
   }
 
+  // --- Format de fichier non pris en charge ---
+  if (e.includes('unsupported_type') || e.includes('format d’image non supporté') || e.includes('image format')) {
+    return {
+      title: 'Format de photo non accepté',
+      message: 'Cette photo n’est pas au format JPEG, PNG ou WebP.',
+      action: 'Choisissez une autre photo dans l’un de ces trois formats.',
+      icon: 'image',
+    };
+  }
+
   // --- Fichier trop volumineux ---
-  if (e.includes('file too large') || e.includes('payload too large') || e.includes('413')) {
+  if (e.includes('file too large') || e.includes('fichier trop lourd') || e.includes('payload too large') || e.includes('413')) {
     return {
       title: 'Photo ou vidéo trop lourde',
       message: "Le fichier dépasse la taille maximale autorisée.",

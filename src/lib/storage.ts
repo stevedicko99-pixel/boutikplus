@@ -5,11 +5,20 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImagePickerAsset } from 'expo-image-picker';
 import { logger } from '@/lib/logger';
 
-export type StorageBucket = 'shop-logos' | 'shop-covers' | 'product-images' | 'payment-proofs' | 'delivery-proofs' | 'driver-id-cards' | 'profile-avatars' | 'ai-source-images';
+export type StorageBucket = 'shop-logos' | 'shop-covers' | 'product-images' | 'payment-proofs' | 'delivery-proofs' | 'driver-id-cards' | 'profile-avatars' | 'ai-source-images' | 'chat-media';
 
 export interface UploadResult {
   url: string;
   path: string;
+  imageCode: string;
+  sizeBytes: number;
+  mimeType: string;
+}
+
+export interface UploadImageOptions {
+  fileCode?: string;
+  path?: string;
+  maxRetries?: number;
 }
 
 export interface UploadProgress {
@@ -24,14 +33,17 @@ export type UploadProgressCallback = (progress: UploadProgress) => void;
 export const UPLOAD_LIMITS = {
   MAX_IMAGE_SIZE_MB: 10,
   MAX_VIDEO_SIZE_MB: 25,
-  // On accepte tout type d'image — le système la convertit en JPEG automatiquement
-  ACCEPTED_IMAGE_TYPES: [] as string[],
+  ACCEPTED_IMAGE_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
   ACCEPTED_VIDEO_TYPES: ['video/mp4', 'video/quicktime', 'video/webm'],
 };
 
 /** Erreurs d'upload user-friendly */
 export class UploadError extends Error {
-  constructor(message: string, public code: 'FILE_TOO_LARGE' | 'UNSUPPORTED_TYPE' | 'UPLOAD_FAILED' | 'NETWORK_ERROR' | 'AUTH_REQUIRED') {
+  constructor(
+    message: string,
+    public code: 'FILE_TOO_LARGE' | 'UNSUPPORTED_TYPE' | 'UPLOAD_FAILED' | 'NETWORK_ERROR' | 'AUTH_REQUIRED',
+    public uploadIdentity?: { imageCode: string; path: string },
+  ) {
     super(message);
     this.name = 'UploadError';
   }
@@ -49,10 +61,11 @@ export function validateFile(file: { size?: number; type?: string; uri?: string 
     );
   }
 
-  // Pour les images, on accepte tout — la compression se charge de la conversion
-  if (isVideo && file.type && acceptedTypes.length > 0 && !acceptedTypes.includes(file.type.toLowerCase())) {
+  if (file.type && acceptedTypes.length > 0 && !acceptedTypes.includes(file.type.toLowerCase())) {
     return new UploadError(
-      `Format vidéo non supporté (${file.type}). Formats acceptés : ${acceptedTypes.join(', ')}`,
+      isVideo
+        ? `Format vidéo non supporté (${file.type}). Formats acceptés : MP4, MOV ou WebM.`
+        : `Format d’image non supporté (${file.type}). Formats acceptés : JPEG, PNG ou WebP.`,
       'UNSUPPORTED_TYPE',
     );
   }
@@ -140,6 +153,13 @@ export const pickAndCompressImage = async (
   if (pickerResult.canceled || !pickerResult.assets?.length) return null;
 
   const asset: ImagePickerAsset = pickerResult.assets[0];
+  const validationError = validateFile({
+    uri: asset.uri,
+    size: asset.fileSize,
+    type: asset.mimeType,
+  });
+  if (validationError) throw validationError;
+
   try {
     const compressed = await compressImage(asset.uri);
     // Sur Web, manipulator retourne une URI blob: ; on la convertit pour l'affichage.
@@ -178,8 +198,18 @@ export const pickMultipleImages = async (
 
     if (pickerResult.canceled || !pickerResult.assets?.length) return [];
 
+    const selectedAssets = pickerResult.assets.slice(0, max);
+    for (const asset of selectedAssets) {
+      const validationError = validateFile({
+        uri: asset.uri,
+        size: asset.fileSize,
+        type: asset.mimeType,
+      });
+      if (validationError) throw validationError;
+    }
+
     const compressedImages: ImageManipulator.ImageResult[] = [];
-    for (const asset of pickerResult.assets.slice(0, max)) {
+    for (const asset of selectedAssets) {
       try {
         const compressed = await compressImage(asset.uri);
         if (Platform.OS === 'web' && isBlobUri(compressed.uri)) {
@@ -201,6 +231,7 @@ export const pickMultipleImages = async (
     }
     return compressedImages;
   } catch (e) {
+    if (e instanceof UploadError) throw e;
     logger.error('pickMultipleImages: picker error', e);
     return [];
   }
@@ -233,6 +264,7 @@ export const uploadImage = async (
   filePrefix = 'img',
   onProgress?: UploadProgressCallback,
   timeoutMs = 20000,
+  options: UploadImageOptions = {},
 ): Promise<UploadResult | null> => {
   const userId = await getCurrentUserId();
   if (!userId) {
@@ -240,78 +272,78 @@ export const uploadImage = async (
     throw new UploadError('Utilisateur non connecté', 'AUTH_REQUIRED');
   }
 
-  const ext = 'jpg';
-  const fileName = `${filePrefix}_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 8)}.${ext}`;
-  const path = `${userId}/${fileName}`;
-
+  const imageCode = options.fileCode ?? `${filePrefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}`;
+  const path = options.path ?? `${userId}/${imageCode}.jpg`;
   let body: Blob | ArrayBuffer;
+  let sizeBytes = 0;
   try {
     const response = await fetch(localUri);
-    body = Platform.OS === 'web' ? await response.blob() : await response.arrayBuffer();
+    const blob = await response.blob();
+    sizeBytes = blob.size;
+    const validationError = validateFile({ size: sizeBytes, type: 'image/jpeg', uri: localUri });
+    if (validationError) throw validationError;
+    body = Platform.OS === 'web'
+      ? blob
+      : typeof blob.arrayBuffer === 'function'
+        ? await blob.arrayBuffer()
+        : await response.arrayBuffer();
   } catch (e) {
+    if (e instanceof UploadError) {
+      e.uploadIdentity = { imageCode, path };
+      throw e;
+    }
     logger.error('uploadImage: conversion binaire impossible', e);
-    throw new UploadError('Conversion de l\'image impossible', 'UPLOAD_FAILED');
+    throw new UploadError('Conversion de l’image impossible', 'UPLOAD_FAILED', { imageCode, path });
   }
 
-  // Timeout pour éviter de bloquer indéfiniment (réseaux burkinabè instables)
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new UploadError('Temps dépassé - réseau instable', 'NETWORK_ERROR')), timeoutMs);
-  });
-
-  try {
-    if (onProgress) {
-      let simulated = 5;
-      onProgress({ loaded: simulated, total: 100, percent: simulated });
-    }
-
-    const uploadPromise = (async () => {
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(path, body, {
-          contentType: 'image/jpeg',
-          upsert: false,
-          ...(onProgress ? {
-            onProgress: (event: any) => {
-              if (event?.total && event?.loaded != null) {
-                const percent = Math.round((event.loaded / event.total) * 100);
-                onProgress({ loaded: event.loaded, total: event.total, percent });
-              }
-            },
-          } : {}),
-        });
-
+  const maxRetries = Math.max(0, options.maxRetries ?? 1);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new UploadError('Temps dépassé - réseau instable', 'NETWORK_ERROR')), timeoutMs);
+      });
+      const uploadPromise = supabase.storage.from(bucket).upload(path, body, {
+        contentType: 'image/jpeg',
+        upsert: attempt > 0,
+      });
+      const { data, error } = await Promise.race([uploadPromise, timeoutPromise]);
+      if (timer) clearTimeout(timer);
       if (error) {
-        logger.error('Upload error', error);
-        // Ne plus masquer les erreurs bucket/JWT — l'utilisateur doit savoir
+        const transient = /network|fetch|timeout|5\d\d/i.test(error.message ?? '');
+        if (transient && attempt < maxRetries) continue;
         throw new UploadError(
           error.message?.includes('bucket')
             ? `Bucket de stockage introuvable (${bucket}). Contactez un admin.`
             : error.message?.includes('policy') || error.message?.includes('row-level')
-              ? `Permission refusée pour l'upload (${bucket}).`
-              : `Échec de l'upload : ${error.message}`,
-          'UPLOAD_FAILED',
+              ? `Permission refusée pour le téléversement (${bucket}).`
+              : `Échec du téléversement : ${error.message}`,
+          transient ? 'NETWORK_ERROR' : 'UPLOAD_FAILED',
+          { imageCode, path },
         );
       }
-
-      if (onProgress) {
-        onProgress({ loaded: 100, total: 100, percent: 100 });
+      onProgress?.({ loaded: sizeBytes, total: sizeBytes, percent: 100 });
+      const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+      return { url: publicUrlData.publicUrl, path: data.path, imageCode, sizeBytes, mimeType: 'image/jpeg' };
+    } catch (e: any) {
+      if (timer) clearTimeout(timer);
+      const transient = e instanceof UploadError
+        ? e.code === 'NETWORK_ERROR'
+        : /network|fetch|timeout|timed out/i.test(e?.message ?? '');
+      if (transient && attempt < maxRetries) continue;
+      if (e instanceof UploadError) {
+        e.uploadIdentity ??= { imageCode, path };
+        throw e;
       }
-
-      const { data: publicUrlData } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(data.path);
-
-      return { url: publicUrlData.publicUrl, path: data.path };
-    })();
-
-    return await Promise.race([uploadPromise, timeoutPromise]);
-  } catch (e: any) {
-    if (e instanceof UploadError) throw e;
-    logger.error('uploadImage: exception', e);
-    throw new UploadError(e?.message ?? 'Erreur réseau', 'NETWORK_ERROR');
+      logger.error('uploadImage: exception', e);
+      throw new UploadError(e?.message ?? 'Erreur réseau', 'NETWORK_ERROR', { imageCode, path });
+    }
   }
+  throw new UploadError(
+    'Échec du téléversement après plusieurs tentatives',
+    'NETWORK_ERROR',
+    { imageCode, path },
+  );
 };
 
 /** Supprime un objet Supabase Storage à partir de son URL publique */
@@ -344,11 +376,29 @@ export const uploadMultipleImages = async (
   bucket: StorageBucket,
   localUris: string[],
   filePrefix = 'img',
+  concurrency = 3,
+  onFileState?: (index: number, state: 'uploading' | 'success' | 'error', result?: UploadResult, error?: string) => void,
 ): Promise<UploadResult[]> => {
-  const results: UploadResult[] = [];
-  for (const uri of localUris) {
-    const uploaded = await uploadImage(bucket, uri, filePrefix);
-    if (uploaded) results.push(uploaded);
-  }
+  const results = new Array<UploadResult>(localUris.length);
+  const errors = new Array<unknown>(localUris.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < localUris.length) {
+      const index = nextIndex++;
+      onFileState?.(index, 'uploading');
+      try {
+        const uploaded = await uploadImage(bucket, localUris[index], filePrefix);
+        if (!uploaded) throw new UploadError('Téléversement incomplet', 'UPLOAD_FAILED');
+        results[index] = uploaded;
+        onFileState?.(index, 'success', uploaded);
+      } catch (error) {
+        errors[index] = error;
+        onFileState?.(index, 'error', undefined, error instanceof Error ? error.message : String(error));
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), localUris.length) }, worker));
+  const firstError = errors.find(Boolean);
+  if (firstError) throw firstError;
   return results;
 };

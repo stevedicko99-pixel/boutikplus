@@ -7,8 +7,8 @@ import { logger } from '@/lib/logger';
 import { colors, typography, spacing, radius } from '@/theme';
 import { friendlyMessage } from '@/lib/errorMessages';
 import { useAuth } from '@/context/AuthContext';
-import { createShop, updateShop, getShopByOwner } from '@/lib/dataService';
-import { pickAndCompressImage, uploadImage, deleteStorageObject } from '@/lib/storage';
+import { createShop, updateShop, getShopByOwner, isDemoMode } from '@/lib/dataService';
+import { pickAndCompressImage, uploadImage, deleteStorageObject, isLocalMediaUri } from '@/lib/storage';
 import { CATEGORIES } from '@/constants/categories';
 import { CITY_LIST } from '@/constants/cities';
 import { Button } from '@/components/ui/Button';
@@ -171,113 +171,68 @@ export function CreateShopScreen({ navigation, route }: CreateShopScreenProps) {
       return;
     }
     setLoading(true);
+    const uploadedFiles: Array<{ bucket: 'shop-logos' | 'shop-covers'; url: string }> = [];
 
     try {
-    // Upload logo — si l'upload échoue (mode démo / offline), on garde l'URI locale (data/file).
-    let logoUrl: string | null | undefined = undefined;
-    if (logoUri && (logoUri.startsWith('file://') || logoUri.startsWith('data:'))) {
-      try {
-        const uploaded = await uploadImage('shop-logos', logoUri, `logo_${profile?.id ?? 'demo'}_${Date.now()}`);
-        if (uploaded) {
-          logoUrl = uploaded.url;
-        } else {
-          logger.warn('[CreateShop] logo upload returned null, falling back to local URI');
-          logoUrl = logoUri;
+      const resolveImageUrl = async (
+        uri: string | null,
+        bucket: 'shop-logos' | 'shop-covers',
+        prefix: string,
+      ): Promise<string | null> => {
+        if (!uri || !isLocalMediaUri(uri)) return uri;
+        try {
+          const uploaded = await uploadImage(bucket, uri, `${prefix}_${profile?.id ?? 'demo'}_${Date.now()}`);
+          if (uploaded) {
+            uploadedFiles.push({ bucket, url: uploaded.url });
+            return uploaded.url;
+          }
+          if (isDemoMode) return uri;
+          throw new Error('Le téléversement de l’image a échoué.');
+        } catch (error) {
+          if (isDemoMode) return uri;
+          throw error;
         }
-      } catch (uploadErr: any) {
-        logger.warn('[CreateShop] logo upload failed, using local URI', uploadErr?.message);
-        logoUrl = logoUri;
-      }
-    } else if (logoUri !== null) {
-      logoUrl = logoUri;
-    } else {
-      logoUrl = null;
-    }
+      };
 
-    // Upload cover / bannière — même fallback local si besoin.
-    let coverUrl: string | null | undefined = undefined;
-    if (coverUri && (coverUri.startsWith('file://') || coverUri.startsWith('data:'))) {
-      try {
-        const uploaded = await uploadImage('shop-covers', coverUri, `cover_${profile?.id ?? 'demo'}_${Date.now()}`);
-        if (uploaded) {
-          coverUrl = uploaded.url;
-        } else {
-          logger.warn('[CreateShop] cover upload returned null, falling back to local URI');
-          coverUrl = coverUri;
-        }
-      } catch (uploadErr: any) {
-        logger.warn('[CreateShop] cover upload failed, using local URI', uploadErr?.message);
-        coverUrl = coverUri;
-      }
-    } else if (coverUri !== null) {
-      coverUrl = coverUri;
-    } else {
-      coverUrl = null;
-    }
+      const logoUrl = await resolveImageUrl(logoUri, 'shop-logos', 'logo');
+      const coverUrl = await resolveImageUrl(coverUri, 'shop-covers', 'cover');
+      const openingHours = buildOpeningHours();
+      const socialLinks = buildSocialLinks();
+      const result = mode === 'edit' && shopId
+        ? await updateShop(shopId, {
+            name, description: description || undefined, category_id: categoryId, city,
+            orange_money_number: orangeNumber || null, moov_money_number: moovNumber || null,
+            coris_money_number: corisNumber || null, wave_number: waveNumber || null,
+            logo_url: logoUrl, cover_url: coverUrl, slogan: slogan || null,
+            phone_number: phoneNumber || null, whatsapp_number: whatsappNumber || null,
+            opening_hours: openingHours, social_links: socialLinks,
+          })
+        : await createShop({
+            ownerId: profile?.id ?? 'demo-seller', name, description, categoryId, city,
+            orangeMoneyNumber: orangeNumber || undefined, moovMoneyNumber: moovNumber || undefined,
+            corisMoneyNumber: corisNumber || undefined, waveNumber: waveNumber || undefined,
+            logoUrl, coverUrl, slogan: slogan || undefined, phoneNumber: phoneNumber || undefined,
+            whatsappNumber: whatsappNumber || undefined, socialLinks, openingHours,
+          });
 
-    const openingHours = buildOpeningHours();
-    const socialLinks = buildSocialLinks();
-
-    // Nettoyage des anciens fichiers distants si remplacés ou supprimés
-    if (mode === 'edit') {
-      if (oldLogoUrl && oldLogoUrl !== logoUrl) {
-        await deleteStorageObject('shop-logos', oldLogoUrl);
+      if (result.error) {
+        await Promise.all(uploadedFiles.map(({ bucket, url }) => deleteStorageObject(bucket, url)));
+        toast.error(mode === 'edit' ? 'Échec de la mise à jour' : 'Échec de la création', friendlyMessage(result.error));
+        return;
       }
-      if (oldCoverUrl && oldCoverUrl !== coverUrl) {
-        await deleteStorageObject('shop-covers', oldCoverUrl);
-      }
-    }
 
-    if (mode === 'edit' && shopId) {
-      const { error } = await updateShop(shopId, {
-        name,
-        description: description || undefined,
-        category_id: categoryId,
-        city,
-        orange_money_number: orangeNumber || null,
-        moov_money_number: moovNumber || null,
-        coris_money_number: corisNumber || null,
-        wave_number: waveNumber || null,
-        logo_url: logoUrl,
-        cover_url: coverUrl,
-        slogan: slogan || null,
-        phone_number: phoneNumber || null,
-        whatsapp_number: whatsappNumber || null,
-        opening_hours: openingHours,
-        social_links: socialLinks,
-      });
-      setLoading(false);
-      if (error) { toast.error('Échec de la mise à jour', friendlyMessage(error)); return; }
-      toast.success('Boutique mise à jour', 'Vos modifications ont été sauvegardées');
+      if (mode === 'edit') {
+        if (oldLogoUrl && oldLogoUrl !== logoUrl && !isLocalMediaUri(oldLogoUrl)) await deleteStorageObject('shop-logos', oldLogoUrl);
+        if (oldCoverUrl && oldCoverUrl !== coverUrl && !isLocalMediaUri(oldCoverUrl)) await deleteStorageObject('shop-covers', oldCoverUrl);
+      }
+      toast.success(mode === 'edit' ? 'Boutique mise à jour' : 'Boutique créée 🎉', mode === 'edit' ? 'Vos modifications ont été sauvegardées' : 'Votre boutique est maintenant en ligne');
       navigation.navigate('SellerDashboard');
-    } else {
-      const { error } = await createShop({
-        ownerId: profile?.id ?? 'demo-seller',
-        name,
-        description,
-        categoryId,
-        city,
-        orangeMoneyNumber: orangeNumber || undefined,
-        moovMoneyNumber: moovNumber || undefined,
-        corisMoneyNumber: corisNumber || undefined,
-        waveNumber: waveNumber || undefined,
-        logoUrl,
-        coverUrl,
-        slogan: slogan || undefined,
-        phoneNumber: phoneNumber || undefined,
-        whatsappNumber: whatsappNumber || undefined,
-        socialLinks,
-        openingHours,
-      });
-      setLoading(false);
-      if (error) { toast.error('Échec de la création', friendlyMessage(error)); return; }
-      toast.success('Boutique créée 🎉', 'Votre boutique est maintenant en ligne');
-      navigation.navigate('SellerDashboard');
-    }
     } catch (e: any) {
-      setLoading(false);
+      await Promise.all(uploadedFiles.map(({ bucket, url }) => deleteStorageObject(bucket, url)));
       toast.error('Erreur inattendue', friendlyMessage(e?.message ?? String(e)));
       logger.error('[CreateShop] handleSubmit error', e);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -352,7 +307,7 @@ export function CreateShopScreen({ navigation, route }: CreateShopScreenProps) {
           )}
         </Pressable>
 
-        <Input label="Nom de la boutique *" value={name} onChangeText={setName} placeholder="Ex: Faso Fashion" icon="briefcase" />
+        <Input label="Nom de la boutique *" value={name} onChangeText={setName} placeholder="Ex: WILLARIS PRIME BF" icon="briefcase" />
         <Input label="Description" value={description} onChangeText={setDescription} placeholder="Décrivez ce que vous vendez..." multiline numberOfLines={3} />
 
         <Text style={styles.label}>Catégorie principale</Text>
