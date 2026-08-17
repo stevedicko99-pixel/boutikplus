@@ -18,9 +18,9 @@ import {
 } from '@/lib/validators';
 import { logger } from '@/lib/logger';
 
-// APK Android v1.3.0 hébergé sur GitHub Releases (limite 2 GB vs 100 MB Vercel).
+// APK Android v1.3.1 hébergé sur GitHub Releases (limite 2 GB vs 100 MB Vercel).
 // URL stable et permanente. Mise à jour à chaque nouvelle release.
-const APK_DOWNLOAD_URL = 'https://github.com/stevedicko99-pixel/boutikplus/releases/download/v1.3.0/BoutikPlus.apk';
+const APK_DOWNLOAD_URL = 'https://github.com/stevedicko99-pixel/boutikplus/releases/download/v1.3.1/BoutikPlus.apk';
 const APK_DOWNLOAD_FILENAME = 'BoutikPlus.apk';
 
 interface LoginScreenProps {
