@@ -1,19 +1,42 @@
-// ⚠️ CRITICAL ANDROID - DOIT ÊTRE LE PREMIER IMPORT DE L'APP.
+// ⚠️ DEBUG FIRST — DOIT ÊTRE L'IMPORT ABSOLU #1.
+// Envoie un beacon HTTP SYNCHRONE (XMLHttpRequest) avant TOUT autre module.
+// Si le server reçoit B0 → le bundle a démarré l'évaluation (H2 partiellement
+// falsifié : le bundle n'a pas crash au chargement Metro).
+// #region debug-point A:startup
+import { __dbg } from '@/lib/debug-bootstrap';
+// #endregion
+__dbg('A', 'App.tsx:6', 'B0.2: App.tsx import hoisting complete');
+
+// ⚠️ CRITICAL ANDROID - #2 IMPORT.
 // Sans cet import side-effect, react-native-gesture-handler 2.20+ crash
-// silencieusement sur Android natif (keystore Samsung/Huawei en particulier)
-// → splash screen puis page blanche infinie (aucun rendu React).
+// silencieusement sur Android natif.
 import 'react-native-gesture-handler';
+// #region debug-point A:gesture-handler-post
+__dbg('A', 'App.tsx:16', 'B1: react-native-gesture-handler imported OK');
+// #endregion
 
 // ⚠️ CRITICAL ANDROID - react-native-screens 4.x doit être initialisé AVANT
 // toute création de navigator. Sans enableScreens(), le bridge JS<->natif
 // ScreenContainer throw et laisse une vue vide = page blanche.
 import { enableScreens } from 'react-native-screens';
-try { enableScreens(); } catch { /* silencieux : déjà appelé sur web */ }
+try {
+  enableScreens();
+  // #region debug-point A:enable-screens-ok
+  __dbg('A', 'App.tsx:22', 'B2: enableScreens called OK');
+  // #endregion
+} catch (e: any) {
+  // #region debug-point A:enable-screens-err
+  __dbg('A', 'App.tsx:26', 'B2-err: enableScreens throw', { err: e?.message });
+  // #endregion
+}
 
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform, LogBox } from 'react-native';
+// #region debug-point A:rn-imports-ok
+__dbg('A', 'App.tsx:36', 'B3: basic RN imports OK (StatusBar, SafeArea, Platform, LogBox)');
+// #endregion
 
 // 🔴 ErrorGuard global — attrape TOUTES les erreurs non gérées (y compris
 // celles qui arrivent AVANT React.mount) et affiche un écran d'erreur
@@ -56,6 +79,9 @@ try {
   ]);
 } catch {}
 import { AuthProvider } from '@/context/AuthContext';
+// #region debug-point D:auth-imported
+__dbg('D', 'App.tsx:78', 'B4.1: AuthProvider (supabase + secureStore) imported OK');
+// #endregion
 import { CartProvider } from '@/context/CartContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { ConnectivityProvider } from '@/context/ConnectivityContext';
@@ -63,18 +89,35 @@ import { FavoriteProvider } from '@/context/FavoriteContext';
 import { AccessibilityProvider } from '@/context/AccessibilityContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+// #region debug-point B:providers-imported
+__dbg('B', 'App.tsx:90', 'B4.2: tous Providers (hors navigator) importés OK');
+// #endregion
 import { RootNavigator } from '@/navigation/RootNavigator';
+// #region debug-point C:navigator-imported
+__dbg('C', 'App.tsx:95', 'B4.3: RootNavigator importé OK (tous écrans + Chat + mediaUpload)');
+// #endregion
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { colors } from '@/theme';
 import { StyleSheet } from 'react-native';
 import { useEffect } from 'react';
 import { setupForegroundNotificationHandler } from '@/lib/pushNotificationService';
 import { registerServiceWorker } from '@/lib/registerServiceWorker';
+// #region debug-point B:all-imports-done
+__dbg('B', 'App.tsx:107', 'B4.4: TOUS les App.tsx imports ont été évalués');
+// #endregion
 
 export default function App() {
+  // #region debug-point B:app-function-called
+  __dbg('B', 'App.tsx:110', 'B5: fonction App() appelée (premier render React)');
+  // #endregion
   // Configure le handler de notifications push au premier-plan.
   // Sans ça, les notifications ne s'affichent pas tant que l'app est ouverte.
-  useEffect(() => setupForegroundNotificationHandler(), []);
+  useEffect(() => {
+    // #region debug-point B:mounted
+    __dbg('B', 'App.tsx:116', 'B6: useEffect mount → DOM/View rendu');
+    // #endregion
+    try { (setupForegroundNotificationHandler as unknown as () => Promise<void>)(); } catch {}
+  }, []);
   useEffect(() => registerServiceWorker(), []);
 
   return (
