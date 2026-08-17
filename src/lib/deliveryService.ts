@@ -207,14 +207,22 @@ export async function createDriverProfile(params: {
   orangeMoneyNumber?: string | null;
   moovMoneyNumber?: string | null;
   licenseNumber?: string | null;
-}): Promise<{ driverId: string | null; error: string | null }> {
+  idCardFrontUrl?: string | null;
+  idCardBackUrl?: string | null;
+}): Promise<{ driverId: string | null; error: string | null; autoApproved: boolean }> {
+  // 🎯 Validation automatique : si les 2 faces de la CNI sont fournies,
+  // la demande est approuvée automatiquement (pas de revue manuelle).
+  // Permet aux livreurs de commencer immédiatement après soumission CNI.
+  const hasBothIdCards = !!(params.idCardFrontUrl && params.idCardBackUrl);
+  const autoApproved = hasBothIdCards;
+
   if (useDemo) {
     const newDriver: DriverProfile = {
       id: `driver-demo-${Date.now()}`,
       user_id: params.userId,
       vehicle_type: params.vehicleType,
       city: params.city,
-      is_available: true,
+      is_available: autoApproved, // Disponible seulement si CNI validée
       rating: 0,
       total_deliveries: 0,
       base_rate: params.baseRate,
@@ -228,7 +236,7 @@ export async function createDriverProfile(params: {
       created_at: new Date().toISOString(),
     };
     demoDrivers = [...demoDrivers, newDriver];
-    return { driverId: newDriver.id, error: null };
+    return { driverId: newDriver.id, error: null, autoApproved };
   }
   const { data, error } = await supabase
     .from('driver_profiles')
@@ -242,12 +250,22 @@ export async function createDriverProfile(params: {
       orange_money_number: params.orangeMoneyNumber ?? null,
       moov_money_number: params.moovMoneyNumber ?? null,
       license_number: params.licenseNumber ?? null,
-      is_available: true,
-    })
+      // Si les colonnes existent en base, on stocke les URLs CNI + statut auto-approuvé.
+      // Cast as any car les colonnes peuvent ne pas encore exister dans le type Database.
+      ...(hasBothIdCards ? {
+        id_card_front_url: params.idCardFrontUrl,
+        id_card_back_url: params.idCardBackUrl,
+        application_status: 'approved',
+        approved_at: new Date().toISOString(),
+      } : {
+        application_status: 'pending',
+      }),
+      is_available: autoApproved,
+    } as any)
     .select('id')
     .single();
-  if (error) return { driverId: null, error: error.message };
-  return { driverId: data.id, error: null };
+  if (error) return { driverId: null, error: error.message, autoApproved: false };
+  return { driverId: data.id, error: null, autoApproved };
 }
 
 export async function updateDriverProfile(

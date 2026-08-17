@@ -137,6 +137,7 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
       licenseNumber: form.licenseNumber.trim() || null,
     };
     let error: string | null = null;
+    let autoApproved = false;
     if (existingDriverId) {
       ({ error } = await updateDriverProfile(existingDriverId, {
         vehicle_type: params.vehicleType,
@@ -149,8 +150,13 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
         license_number: params.licenseNumber,
       }));
     } else {
-      const result = await createDriverProfile(params);
+      const result = await createDriverProfile({
+        ...params,
+        idCardFrontUrl: idCardFrontUri,
+        idCardBackUrl: idCardBackUri,
+      });
       error = result.error;
+      autoApproved = result.autoApproved;
     }
     setSubmitting(false);
     if (error) {
@@ -159,10 +165,12 @@ export function DriverRegistrationScreen({ navigation }: DriverRegistrationScree
     }
     await refreshProfile();
     Alert.alert(
-      existingDriverId ? 'Profil mis à jour ✓' : 'Inscription réussie 🎉',
+      existingDriverId ? 'Profil mis à jour ✓' : autoApproved ? 'Inscription validée ✓' : 'Inscription réussie 🎉',
       existingDriverId
         ? 'Votre profil livreur a été mis à jour.'
-        : 'Vous êtes maintenant inscrit comme livreur. Vous pouvez accepter des demandes de livraison !',
+        : autoApproved
+          ? 'Votre carte d\'identité a été vérifiée automatiquement. Vous êtes maintenant livreur actif et pouvez accepter des demandes de livraison !'
+          : 'Vous êtes maintenant inscrit comme livreur. Vous pouvez accepter des demandes de livraison !',
       [{ text: 'Voir mon tableau de bord', onPress: () => navigation.replace('DriverDashboard') }],
     );
   };

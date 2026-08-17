@@ -423,6 +423,49 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                 </ScrollView>
               </View>
 
+              {/* ---- Section dédiée : Boutique WILLARIS PRIME BF ---- */}
+              {shops.find((s) => s.name === 'WILLARIS PRIME BF') && (
+                <View style={styles.section}>
+                  <View style={styles.featuredShopsHeader}>
+                    <View style={styles.sectionTitleRowInline}>
+                      <Feather name="shopping-bag" size={16} color={colors.primary} />
+                      <Text style={styles.sectionTitle}>Boutique WILLARIS PRIME</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => {
+                        const shop = shops.find((s) => s.name === 'WILLARIS PRIME BF');
+                        if (shop) navigation.navigate('ShopDetail', { shopId: shop.id });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Voir la boutique WILLARIS PRIME BF"
+                    >
+                      <Text style={styles.seeAll}>Voir la boutique</Text>
+                    </Pressable>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.shopRowContent}
+                  >
+                    {products
+                      .filter((p) => {
+                        const willaris = shops.find((s) => s.name === 'WILLARIS PRIME BF');
+                        return willaris && p.shop_id === willaris.id;
+                      })
+                      .slice(0, 6)
+                      .map((product) => (
+                        <View key={product.id} style={styles.willarisProductCard}>
+                          <ProductCard
+                            product={product}
+                            compact
+                            onPress={() => navigation.navigate('ProductDetail', { productId: product.id })}
+                          />
+                        </View>
+                      ))}
+                  </ScrollView>
+                </View>
+              )}
+
               {/* ---- Products section header ---- */}
               <View style={styles.section}>
                 <View style={styles.sectionTitleRow}>
@@ -612,7 +655,10 @@ const styles = StyleSheet.create({
   },
   featuredShopsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   shopRowContent: { gap: spacing.sm, paddingVertical: spacing.xs },
-  seeAll: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.accentDeep, fontWeight: typography.weights.bold },
+   seeAll: { fontFamily: typography.fontFamily, fontSize: typography.sizes.small, color: colors.accentDeep, fontWeight: typography.weights.bold },
+
+   /* Section dédiée WILLARIS PRIME — cartes produits en scroll horizontal */
+   willarisProductCard: { width: 160, flex: 0 },
 
   /* promotions */
   promoCard: { width: 260, height: 120, borderRadius: radius.lg, overflow: 'hidden', flexDirection: 'row' },

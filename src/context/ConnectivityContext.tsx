@@ -32,10 +32,22 @@ function isNetInfoOnline(state: any): boolean {
 }
 
 function isWeakConnection(state: any): boolean {
+  // 🎯 Critères prédéterminés — le mode faible connexion ne s'active QUE si :
+  // 1. Réseau cellulaire 2G (connexions très lentes, < 50 Kbps)
+  // 2. Pas d'internet reachable ET isConnected false/unknown
+  // 3. Sur web : saveData activé OU effectiveType slow-2g/2g
+  // 3G et 4G sont exclus (suffisamment rapides pour l'app).
+  // Avant : s'activait sur 3G → faux positifs constants sur mobile.
+  if (!state) return false;
+
+  // Offline total = low connection
+  if (state.isInternetReachable === false) return true;
+
   const details = state.details;
   if (state.type === 'cellular' && details && typeof details === 'object') {
     const generation = details.cellularGeneration || details.generation;
-    if (generation === '2g' || generation === '3g' || generation === '2G' || generation === '3G') {
+    // Seulement 2G est considéré comme faible. 3G/4G/5G sont OK.
+    if (generation === '2g' || generation === '2G') {
       return true;
     }
   }
@@ -44,7 +56,10 @@ function isWeakConnection(state: any): boolean {
     const connection = (navigator as Navigator & {
       connection?: { effectiveType?: string; saveData?: boolean };
     }).connection;
-    return connection?.saveData === true || connection?.effectiveType === 'slow-2g' || connection?.effectiveType === '2g' || connection?.effectiveType === '3g';
+    // Sur web : saveData explicite ou 2G sévère seulement
+    return connection?.saveData === true ||
+      connection?.effectiveType === 'slow-2g' ||
+      connection?.effectiveType === '2g';
   }
 
   return false;

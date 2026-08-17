@@ -7,15 +7,15 @@
     "icon": "./assets/images/icon.png",
     "scheme": "boutikplus",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "owner": "cross1137s-team",
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
     "updates": {
-      "enabled": true,
+      "enabled": false,
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "NEVER"
     },
     "splash": {
       "image": "./assets/images/splash.png",
