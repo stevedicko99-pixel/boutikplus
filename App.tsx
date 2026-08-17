@@ -1,6 +1,60 @@
+// ⚠️ CRITICAL ANDROID - DOIT ÊTRE LE PREMIER IMPORT DE L'APP.
+// Sans cet import side-effect, react-native-gesture-handler 2.20+ crash
+// silencieusement sur Android natif (keystore Samsung/Huawei en particulier)
+// → splash screen puis page blanche infinie (aucun rendu React).
+import 'react-native-gesture-handler';
+
+// ⚠️ CRITICAL ANDROID - react-native-screens 4.x doit être initialisé AVANT
+// toute création de navigator. Sans enableScreens(), le bridge JS<->natif
+// ScreenContainer throw et laisse une vue vide = page blanche.
+import { enableScreens } from 'react-native-screens';
+try { enableScreens(); } catch { /* silencieux : déjà appelé sur web */ }
+
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Platform, LogBox } from 'react-native';
+
+// 🔴 ErrorGuard global — attrape TOUTES les erreurs non gérées (y compris
+// celles qui arrivent AVANT React.mount) et affiche un écran d'erreur
+// explicite au lieu d'une page blanche mystérieuse.
+//
+// IMPORTANT : ce code s'exécute au moment de l'import de App.tsx, avant le
+// premier rendu. Si un autre module throw pendant le chargement du bundle,
+// ce handler ne le rattrape pas (il faut AppEntry.js), mais c'est le meilleur
+// garde possible en JS utilisateur.
+if (Platform.OS !== 'web') {
+  try {
+    // ErrorUtils est API interne React Native non typée. require() ici car
+    // import top-level échoue sur certains builds Expo web (tree-shaking).
+    const RN = require('react-native') as any;
+    const ErrorUtils = RN?.ErrorUtils;
+    if (ErrorUtils && typeof ErrorUtils.setGlobalHandler === 'function') {
+      const prevHandler = ErrorUtils._previousHandler || null;
+      ErrorUtils.setGlobalHandler((error: any, isFatal: boolean) => {
+        try {
+          // Log immédiat en console brute — adb logcat | findstr BTIK
+          console.error(
+            `[BTIK FATAL${isFatal ? ' GLOBAL' : ''}] Splash→Blanc prévenue. Stack:`,
+            error?.stack ?? String(error),
+          );
+        } catch {}
+        if (typeof prevHandler === 'function') {
+          try { prevHandler(error, isFatal); } catch {}
+        }
+      });
+    }
+  } catch {}
+}
+
+// Ignore certains warnings bruyants non bloquants pour éviter de polluer
+// la console (jamais supprimés en build release sans LogBox).
+try {
+  LogBox.ignoreLogs([
+    'Animated: useNativeDriver is not supported',
+    'Require cycles',
+  ]);
+} catch {}
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import { NotificationProvider } from '@/context/NotificationContext';
